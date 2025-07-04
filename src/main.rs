@@ -23,9 +23,10 @@ fn main() {
                         let received = String::from_utf8_lossy(&buf[..size]).to_string();
                         //split request base on rows
                         for word in received.split("\n"){
+                            print!("{}", word);
                             if word.trim() == "PING" {
                                 if stream.write_all(b"+PONG\r\n").is_ok() {
-                                    stream.flush().expect("Failed to flush stream");
+                                    // stream.flush().expect("Failed to flush stream");
                                     println!("Sent: +PONG");
                                 } else {
                                     println!("Failed to send response");
