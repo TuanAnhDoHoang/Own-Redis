@@ -34,6 +34,7 @@ fn main() {
                                     }
                                 }
                             }
+                            
                         }
                         Ok(_) => break, // Không còn dữ liệu, thoát vòng lặp
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break, // Không còn dữ liệu để đọc
