@@ -80,14 +80,14 @@ fn main() {
                 let mut buf: [u8; 1024] = [0;1024];
                 loop{
                     match stream.read(&mut buf){
-                        Ok(read_size) => if read_size > 0{
+                        Ok(read_size) => if read_size > 1{
                             let receiver = String::from_utf8_lossy(&buf[..read_size]).to_string();
                             println!("Get {:#?}", receiver);
 
                             for line in receiver.split("\n"){
                                 if line == "PING"{
                                     if stream.write_all("+PONG\r\n".as_bytes()).is_ok(){
-                                        // stream.flush().expect("Error when flushing data");
+                                        stream.flush().expect("Error when flushing data");
                                         println!("Sent +PONG");
                                     }
                                 }
