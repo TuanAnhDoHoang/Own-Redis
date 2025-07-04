@@ -26,18 +26,20 @@ fn main() {
                         Ok(size) if size > 0 => {
                             let received = String::from_utf8_lossy(&buf[..size]).to_string();
                             println!("Received: {}", received);
-
-                            if received == "PING" {
-                                let response = "+PONG\r\n";
-                                if stream.write_all(response.as_bytes()).is_ok() {
-                                    stream.flush().expect("Failed to flush stream");
-                                    println!("Sent: {}", response.trim());
+                            for line in received.lines() {
+                                let trimmed_line = line.trim();
+                                if trimmed_line == "PING" {
+                                    let response = "+PONG\r\n";
+                                    if stream.write_all(response.as_bytes()).is_ok() {
+                                        stream.flush().expect("Failed to flush stream");
+                                        println!("Sent: {}", response.trim());
+                                    } else {
+                                        println!("Failed to send response");
+                                    }
                                 } else {
-                                    println!("Failed to send response");
+                                    println!("Unknown command: {}", trimmed_line);
                                 }
-                            } else {
-                                println!("Unknown command: {}", received);
-                            }
+                            } 
                         }
                         Ok(_) => break, // Không còn dữ liệu, thoát vòng lặp
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break, // Không còn dữ liệu để đọc
