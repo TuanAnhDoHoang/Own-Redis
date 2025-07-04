@@ -1,5 +1,8 @@
 #![allow(unused_imports)]
-use std::{io::{Read, Write}, net::TcpListener};
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+};
 
 fn main() {
     println!("Logs from your program will appear here!");
@@ -15,28 +18,34 @@ fn main() {
         match stream {
             Ok(mut stream) => {
                 println!("Accepted new connection");
+                let mut buf = [0; 1024]; // Buffer 1024 byte
 
-                let mut buf: [u8; 1024] = [0; 1024]; // Buffer 1024 byte
-                match stream.read(&mut buf) {
-                    Ok(size) if size > 0 => {
+                // Lặp để đọc tất cả dữ liệu từ kết nối
+                loop {
+                    match stream.read(&mut buf) {
+                        Ok(size) if size > 0 => {
+                            let received = String::from_utf8_lossy(&buf[..size]).to_string();
+                            println!("Received: {}", received);
 
-                        let received = String::from_utf8_lossy(&buf[..size]).to_string();
-
-                        //split request base on rows
-                        for word in received.split("\n"){
-                            if word.trim() == "PING" {
-                                // print!("HI");
-                                if stream.write_all("+PONG\r\n".as_bytes()).is_ok() {
+                            if received == "PING" {
+                                let response = "+PONG\r\n";
+                                if stream.write_all(response.as_bytes()).is_ok() {
                                     stream.flush().expect("Failed to flush stream");
-                                    // println!("Sent: +PONG");
+                                    println!("Sent: {}", response.trim());
                                 } else {
                                     println!("Failed to send response");
                                 }
+                            } else {
+                                println!("Unknown command: {}", received);
                             }
                         }
+                        Ok(_) => break, // Không còn dữ liệu, thoát vòng lặp
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break, // Không còn dữ liệu để đọc
+                        Err(e) => {
+                            println!("Error reading stream: {}", e);
+                            break;
+                        }
                     }
-                    Ok(_) => println!("Empty message"),
-                    Err(e) => println!("Error reading stream: {}", e),
                 }
             }
             Err(e) => {
