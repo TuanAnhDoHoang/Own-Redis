@@ -43,8 +43,8 @@ async fn handler(mut stream: TcpStream, addr: SocketAddr) {
                 println!("Received from {:?}: {}", addr, received);
 
                 for line in received.split("\n") {
-                    let line = line.trim();
                     println!("line : {}", line);
+                    let line = line.trim();
                     match line.split_whitespace().next() {
                         Some("PING") => {
                             let response = "+PONG\r\n";
@@ -58,19 +58,6 @@ async fn handler(mut stream: TcpStream, addr: SocketAddr) {
                         }
                         _ => println!(),
                     }
-
-                    // if line.len() >= 4 && &line[0..4] == "ECHO" {
-                    //     if line.len() == 4 {} //just only "echo"
-                    //     else if &line[..=4] != "ECHO " {} //Invalid command ECHO(sahdisabud)
-                    //     else{
-                    //         //len > 4
-                    //         let pharase = &line[4..line.len()].trim();
-                    //         println!("{}", pharase);
-                    //         let response = format!("${}\r\n{}\r\n", pharase.len(), pharase);
-
-                    //         write_stream(&mut stream, addr, &response.as_str()).await;
-                    //     }
-                    // }
                 }
             }
             Ok(_) => {
