@@ -58,7 +58,7 @@ async fn handler(mut stream: TcpStream, addr: SocketAddr) {
                             let pharase = pharase.trim();
                             println!("{}", pharase);
                             // let response = format!("$3\r\n{}\r\n", pharase);
-                            let response = format!("{}\n", pharase);
+                            let response = format!("${}\r\n{}\r\n", pharase.len(), pharase);
                             
                             write_stream(&mut stream, addr, &response.as_str()).await;
                         }
