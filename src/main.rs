@@ -1,31 +1,31 @@
-use std::{
-    io::{Read, Write},
-    net::TcpListener,
-    thread,
-};
+use std::net::SocketAddr;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
-fn main() {
-    // In log để theo dõi
-    println!("Server starting...");
+#[tokio::main]
+async fn main() {
+    println!("Logs from your program will appear here!");
 
-    // Tạo TcpListener và xử lý lỗi nếu bind thất bại
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap_or_else(|e| {
-        eprintln!("Failed to bind to address: {}", e);
-        std::process::exit(1);
-    });
+    // Tạo TcpListener
+    let listener = TcpListener::bind("127.0.0.1:6379")
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to bind to address: {}", e);
+            std::process::exit(1);
+        });
 
     println!("Server listening on 127.0.0.1:6379");
 
-    // Lặp vô hạn để chấp nhận kết nối
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                // Tạo một thread mới cho mỗi kết nối
-                let handle = thread::spawn( move || {
-                    handle_client(stream);
+    // Chấp nhận kết nối và xử lý đồng thời
+    loop {
+        match listener.accept().await {
+            Ok((mut stream, addr)) => {
+                println!("New client connected from: {}", addr);
+
+                // Xử lý từng kết nối trong task riêng
+                tokio::spawn(async move {
+                    handler(stream, addr).await;
                 });
-                // (Tùy chọn) Chờ thread hoàn thành nếu cần
-                // handle.join().unwrap();
             }
             Err(e) => {
                 eprintln!("Error accepting connection: {}", e);
@@ -34,41 +34,53 @@ fn main() {
     }
 }
 
-// Hàm xử lý từng kết nối
-fn handle_client(mut stream: std::net::TcpStream) {
-    println!("New client connected");
-
-    let mut buffer = [0; 1024]; // Buffer 1024 byte
-
-    // Lặp để đọc và xử lý dữ liệu
+async fn handler(mut stream: TcpStream, addr: SocketAddr) {
+    let mut buffer = [0; 1024];
     loop {
-        match stream.read(&mut buffer) {
+        match stream.read(&mut buffer).await {
             Ok(size) if size > 0 => {
                 let received = String::from_utf8_lossy(&buffer[..size]).trim().to_string();
-                println!("Received: {}", received);
+                println!("Received from {:?}: {}", addr, received);
 
-                for line in received.split("\n"){
+                for line in received.split("\n") {
                     let line = line.trim();
-
                     if line == "PING" {
                         let response = "+PONG\r\n";
-                        if stream.write_all(response.as_bytes()).is_ok() {
-                            stream.flush().expect("Failed to flush stream");
-                            println!("Sent: {}", response.trim());
-                        } else {
-                            println!("Failed to send response");
+                        write_stream(&mut stream, addr, response).await;
+                    } 
+
+                    if line.len() >= 4 && &line[0..4] == "ECHO" {
+                        if line.len() == 4 {} //just only "echo"
+                        else if &line[..=4] != "ECHO " {} //Invalid command ECHO(sahdisabud)
+                        else{
+                            //len > 4
+                            let mut pharase = &line[4..line.len()];
+                            let pharase = pharase.trim();
+                            println!("{}", pharase);
+                            let response = format!("$3\r\n{}\r\n", pharase);
+                            
+                            write_stream(&mut stream, addr, &response.as_str()).await;
                         }
                     }
                 }
-                
             }
-            Ok(_) => break, // Không còn dữ liệu, thoát
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+            Ok(_) => {
+                println!("Client {:?} disconnected", addr);
+                break;
+            }
             Err(e) => {
-                println!("Error reading from stream: {}", e);
+                println!("Error reading from {:?}: {}", addr, e);
                 break;
             }
         }
     }
-    println!("Client disconnected");
+}
+
+async fn write_stream(stream: &mut TcpStream, addr: SocketAddr, payload: &str) {
+    if stream.write_all(payload.as_bytes()).await.is_ok() {
+        stream.flush().await.expect("Failed to flush stream");
+        println!("Sent to {:?}: {}", addr, payload.trim());
+    }
+
+    println!("Failed to send response to {:?}", addr);
 }
