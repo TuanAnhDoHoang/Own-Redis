@@ -88,7 +88,7 @@ fn main() {
                                 let line = line.trim();
                                 if line == "PING"{
                                     if stream.write_all("+PONG\r\n".as_bytes()).is_ok(){
-                                        stream.flush().expect("Error when flushing data");
+                                        // stream.flush().expect("Error when flushing data");
                                         println!("Sent +PONG");
                                     }
                                 }
