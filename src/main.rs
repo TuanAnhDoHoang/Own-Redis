@@ -25,7 +25,7 @@ fn main() {
                     handle_client(stream);
                 });
                 // (Tùy chọn) Chờ thread hoàn thành nếu cần
-                handle.join().unwrap();
+                // handle.join().unwrap();
             }
             Err(e) => {
                 eprintln!("Error accepting connection: {}", e);
