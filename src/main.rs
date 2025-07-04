@@ -85,6 +85,7 @@ fn main() {
                             println!("Get {:#?}", receiver);
 
                             for line in receiver.split("\n"){
+                                let line = line.trim();
                                 if line == "PING"{
                                     if stream.write_all("+PONG\r\n".as_bytes()).is_ok(){
                                         stream.flush().expect("Error when flushing data");
