@@ -87,7 +87,7 @@ async fn handler(mut stream: TcpStream, addr: SocketAddr) {
 async fn write_stream(stream: &mut TcpStream, addr: SocketAddr, payload: &str) {
     if stream.write_all(payload.as_bytes()).await.is_ok() {
         stream.flush().await.expect("Failed to flush stream");
-        println!("Sent to {:?}: {}", addr, payload.trim());
+        println!("Sent to {:?}: {}", addr, payload);
     } else {
         println!("Failed to send response to {:?}", addr);
     }
