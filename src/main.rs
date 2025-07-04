@@ -25,6 +25,7 @@ fn main() {
                         //split request base on rows
                         for word in received.split("\n"){
                             if word.trim() == "PING" {
+                                print!("HI");
                                 if stream.write_all("+PONG\r\n".as_bytes()).is_ok() {
                                     stream.flush().expect("Failed to flush stream");
                                     println!("Sent: +PONG");
