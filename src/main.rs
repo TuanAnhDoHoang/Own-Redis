@@ -1,22 +1,44 @@
 #![allow(unused_imports)]
-use std::{io::Write, net::TcpListener};
+use std::{io::{Read, Write}, net::TcpListener};
 
 fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    // Uncomment this block to pass the first stage
-    //
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
-    
+    let listener = TcpListener::bind("127.0.0.1:6379").unwrap_or_else(|e| {
+        eprintln!("Failed to bind to address: {}", e);
+        std::process::exit(1);
+    });
+
+    println!("Server listening on 127.0.0.1:6379");
+
     for stream in listener.incoming() {
         match stream {
-            Ok(mut _stream) => {
-                _stream.write_all(b"+PONG\r\n");
-                println!("accepted new connection");
+            Ok(mut stream) => {
+                println!("Accepted new connection");
+
+                let mut buf: [u8; 1024] = [0; 1024]; // Buffer 1024 byte
+                match stream.read(&mut buf) {
+                    Ok(size) if size > 0 => {
+
+                        let received = String::from_utf8_lossy(&buf[..size]).to_string();
+                        //split request base on rows
+                        for word in received.split("\n"){
+                            if word.trim() == "PING" {
+                                if stream.write_all(b"+PONG\r\n").is_ok() {
+                                    stream.flush().expect("Failed to flush stream");
+                                    println!("Sent: +PONG");
+                                } else {
+                                    println!("Failed to send response");
+                                }
+                            }
+                        }
+                    }
+                    Ok(_) => println!("Empty message"),
+                    Err(e) => println!("Error reading stream: {}", e),
+                }
             }
             Err(e) => {
-                println!("error: {}", e);
+                println!("Error accepting connection: {}", e);
             }
         }
     }
