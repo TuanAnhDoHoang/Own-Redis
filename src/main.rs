@@ -44,6 +44,7 @@ async fn handler(mut stream: TcpStream, addr: SocketAddr) {
 
                 for line in received.split("\n") {
                     let line = line.trim();
+                    println!("line : {}", line);
                     match line.split_whitespace().next() {
                         Some("PING") => {
                             let response = "+PONG\r\n";
