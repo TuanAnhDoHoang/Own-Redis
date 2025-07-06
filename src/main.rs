@@ -34,7 +34,7 @@ async fn main() {
     }
 }
 
-async fn stream_handler(mut stream: TcpStream) {
+async fn stream_handler(stream: TcpStream) {
     let mut handler: RespHandler = RespHandler::new(stream);
     loop {
         let result: Value = match handler.read_value().await {
@@ -63,7 +63,7 @@ async fn stream_handler(mut stream: TcpStream) {
             }
         };
         handler
-            .write_value(resp::resp::unwrap_bulk_string(&result).unwrap().as_str())
+            .write_value(resp::resp::unwrap_value_to_string(&result).unwrap().as_str())
             .await;
     }
 }

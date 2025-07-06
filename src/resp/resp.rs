@@ -1,7 +1,6 @@
 use std::{usize};
 use crate::resp::value::{Value};
 use anyhow::{Result};
-use bytes::{BytesMut};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 pub struct RespHandler {
     stream: TcpStream,
@@ -22,15 +21,15 @@ impl RespHandler {
 
         if read_size == 0{ return Ok(None); }
 
-        println!("LOG_FROM_read_value -- buffer: {}", bytes_to_string(&self.buffer[..read_size]));       
+        // println!("LOG_FROM_read_value -- buffer: {}", bytes_to_string(&self.buffer[..read_size]));       
         match parse_payload(&self.buffer[..read_size]){
             Ok((value, _)) => Ok(Some(value)),
             Err(e) =>  Err(anyhow::anyhow!("Got Error when parse value from stream: {}", e)) 
         }
     }
     pub async fn write_value(&mut self, payload: &str){
-        println!("LOG_FROM_write_value -- payload: {}", payload);
-        if self.stream.write_all(payload.as_bytes()).await.is_ok() {
+        // println!("LOG_FROM_write_value -- payload: {}", payload);
+        if self.stream.write_all(Value::serialize(&Value::SimpleString(payload.to_string())).as_bytes()).await.is_ok() {
             self.stream.flush().await.expect("Failed to flush stream");
             // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
         } else {
@@ -43,7 +42,7 @@ fn parse_payload(payload: &[u8]) -> Result<(Value, usize)> {
         '+' => parse_simple_string(payload),
         '$' => parse_bulk_string(payload),
         '*' => parse_array(payload),
-        _ => Err(anyhow::anyhow!("Invalid sign in string given")),
+        _ => Err(anyhow::anyhow!("Invalid sign in string given: {}", bytes_to_string(&payload))),
     }
 }
 
@@ -61,7 +60,8 @@ fn parse_simple_string(payload: &[u8]) -> Result<(Value, usize)> {
 }
 
 fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
-    //$4\r\nECHO\r\n
+    //$4\r\nPING\r\n
+    // println!("LOG_FROM parse_bulk_string --- payload: {}", bytes_to_string(payload));
     if let Some((payload_size, _)) = read_until_crlf(&payload[1..]) {
         //Size of bulk string
         let payload_size: usize = String::from_utf8_lossy(payload_size)
@@ -89,20 +89,22 @@ fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
 fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
     // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
     let (array_size, last) = read_until_crlf(&payload[1..]).unwrap();
+    // println!("LOG_FROM_parse_array --- array_size: {} and last: {}", bytes_to_string(array_size), last);
     let array_size: usize = String::from_utf8_lossy(array_size)
         .trim()
         .to_string()
         .parse::<usize>()
         .unwrap();
-
     let mut array_parsed: Vec<Value> = Vec::new();
-    let mut start = last + 1 - 1;
-
+    let mut start = last + 1;
     for _ in 0..array_size{
         match parse_payload(&payload[start..]){
             Ok((buffer, buf_size)) => {
+                // println!("LOG_FROM_parse_array buffer: {}", unwrap_value_to_string(&buffer).unwrap());
+                // println!("LOG_FROM_parse_array --- payload[{}..]: {:?}", start, bytes_to_string(&payload[start..]));
                 //re-calculation start value
-                start += buf_size;
+                let format_prev_bulk_string = format!("${}\r\n{}\r\n", buf_size, unwrap_value_to_string(&buffer).unwrap());
+                start += format_prev_bulk_string.len();
                 array_parsed.push(buffer);
 
             },
@@ -122,9 +124,9 @@ fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
 //Read until \r\n
 fn read_until_crlf(payload: &[u8]) -> Option<(&[u8], usize)> {
     for i in 1..payload.len() {
-        if payload[i] == b'n' && payload[i - 1] == b'\\' && payload[i-2] == b'r' && payload[i-3] == b'\\'{
+        if payload[i] == b'\n' && payload[i-1] == b'\r'{
             //return buffer content and size from buffer to \n
-            return Some((&payload[0..i - 3], i-1));
+            return Some((&payload[0..i - 1], i+1));
         }
     }
     None
@@ -134,7 +136,7 @@ pub fn extract_command(value: Value) -> Result<(String, Vec<Value>)>{
     match value{
         Value::Array(value_array) => {
             Ok((
-                unwrap_bulk_string(value_array.first().unwrap()).unwrap(),
+                unwrap_value_to_string(value_array.first().unwrap()).unwrap(),
                 value_array.into_iter().skip(1).collect()
             ))
         },
@@ -142,10 +144,12 @@ pub fn extract_command(value: Value) -> Result<(String, Vec<Value>)>{
     }
 }
 
-pub fn unwrap_bulk_string(value: &Value) -> Result<String>{
+pub fn unwrap_value_to_string(value: &Value) -> Result<String>{
+    // println!("LOG_FROM_unwrap_bulk_string --- value: {:?}", value);
     match value{
         Value::BulkString(value) => Ok(value.to_owned()),
-        _ => Err(anyhow::anyhow!("Got error Unwrap_bulk_string type mismatch"))
+        Value::SimpleString(value) => Ok(value.to_owned()),
+        _ => Err(anyhow::anyhow!("Got error unwrap_value_to_string type mismatch"))
     }
 }
 
