@@ -22,7 +22,7 @@ impl RespHandler {
 
         if read_size == 0{ return Ok(None); }
 
-        println!("LOG_FROM_read_value -- buffer: {:#?}", &self.buffer[..read_size]);       
+        println!("LOG_FROM_read_value -- buffer: {}", bytes_to_string(&self.buffer[..read_size]));       
         match parse_payload(&self.buffer[..read_size]){
             Ok((value, _)) => Ok(Some(value)),
             Err(e) =>  Err(anyhow::anyhow!("Got Error when parse value from stream: {}", e)) 
