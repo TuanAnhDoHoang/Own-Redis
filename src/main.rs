@@ -21,7 +21,7 @@ async fn main() {
 
     loop {
         match listener.accept().await {
-            Ok((mut stream, addr)) => {
+            Ok((stream, addr)) => {
                 println!("New client connected from: {}", addr);
                 tokio::spawn(async move {
                     stream_handler(stream).await;
