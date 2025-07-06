@@ -1,12 +1,15 @@
-use std::net::SocketAddr;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+mod resp;
+
+use resp::{
+    resp::{extract_command, RespHandler},
+    value::Value,
+};
 use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
 async fn main() {
     println!("Logs from your program will appear here!");
 
-    // Tạo TcpListener
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .unwrap_or_else(|e| {
@@ -16,15 +19,12 @@ async fn main() {
 
     println!("Server listening on 127.0.0.1:6379");
 
-    // Chấp nhận kết nối và xử lý đồng thời
     loop {
         match listener.accept().await {
             Ok((mut stream, addr)) => {
                 println!("New client connected from: {}", addr);
-
-                // Xử lý từng kết nối trong task riêng
                 tokio::spawn(async move {
-                    handler(stream, addr).await;
+                    stream_handler(stream).await;
                 });
             }
             Err(e) => {
@@ -34,49 +34,36 @@ async fn main() {
     }
 }
 
-async fn handler(mut stream: TcpStream, addr: SocketAddr) {
-    let mut buffer = [0; 1024];
+async fn stream_handler(mut stream: TcpStream) {
+    let mut handler: RespHandler = RespHandler::new(stream);
     loop {
-        match stream.read(&mut buffer).await {
-            Ok(size) if size > 0 => {
-                let received = String::from_utf8_lossy(&buffer[..size]).trim().to_string();
-                println!("Received from {:?}: {}", addr, received);
-
-                for line in received.split("\n") {
-                    println!("line : {}", line);
-                    let line = line.trim();
-                    match line.split_whitespace().next() {
-                        Some("PING") => {
-                            let response = "+PONG\r\n";
-                            write_stream(&mut stream, addr, response).await;
+        let result: Value = match handler.read_value().await {
+            Ok(Some(response)) => {
+                if let Ok((command, command_content)) = extract_command(response) {
+                    match command.as_str() {
+                        "PING" => Value::SimpleString("PONG".to_string()),
+                        "ECHO" => command_content.get(0).unwrap().clone(),
+                        c => {
+                            eprintln!("Invalid command: {}", c);
+                            break;
                         }
-                        Some("ECHO") => {
-                            if let Some(payload ) = line.split_whitespace().nth(1){
-                                let payload = format!("${}\r\n{}\r\n", payload.len(), payload);
-                                write_stream(&mut stream, addr, payload.as_str()).await;
-                            }
-                        }
-                        _ => println!(),
                     }
+                } else {
+                    eprintln!("Failed to extract command");
+                    break;
                 }
             }
-            Ok(_) => {
-                println!("Client {:?} disconnected", addr);
+            Ok(None) => {
+                println!("Client disconnected or no data");
                 break;
             }
             Err(e) => {
-                println!("Error reading from {:?}: {}", addr, e);
+                eprintln!("Error reading value: {}", e);
                 break;
             }
-        }
-    }
-}
-
-async fn write_stream(stream: &mut TcpStream, addr: SocketAddr, payload: &str) {
-    if stream.write_all(payload.as_bytes()).await.is_ok() {
-        stream.flush().await.expect("Failed to flush stream");
-        println!("Sent to {:?}: {}", addr, payload);
-    } else {
-        println!("Failed to send response to {:?}", addr);
+        };
+        handler
+            .write_value(resp::resp::unwrap_bulk_string(&result).unwrap().as_str())
+            .await;
     }
 }
