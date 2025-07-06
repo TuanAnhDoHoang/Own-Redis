@@ -37,6 +37,7 @@ impl RespHandler {
         }
     }
 }
+
 fn parse_payload(payload: &[u8]) -> Result<(Value, usize)> {
     match payload[0] as char {
         '+' => parse_simple_string(payload),
@@ -61,7 +62,7 @@ fn parse_simple_string(payload: &[u8]) -> Result<(Value, usize)> {
 
 fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
     //$4\r\nPING\r\n
-    // println!("LOG_FROM parse_bulk_string --- payload: {}", bytes_to_string(payload));
+    println!("LOG_FROM parse_bulk_string --- payload: {}", bytes_to_string(payload));
     if let Some((payload_size, _)) = read_until_crlf(&payload[1..]) {
         //Size of bulk string
         let payload_size: usize = String::from_utf8_lossy(payload_size)
@@ -70,10 +71,10 @@ fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
 
         let format_prev_bulk_string: String = format!("${}\r\n", payload_size);
 
-        if let Some((buffer, buff_size)) = read_until_crlf(&payload[format_prev_bulk_string.len()..]) {
+        if let Some((buffer, _)) = read_until_crlf(&payload[format_prev_bulk_string.len()..]) {
                 return Ok((
                     Value::BulkString(String::from_utf8_lossy(buffer).trim().to_string()),
-                    buff_size,
+                    payload_size,
                 ));
         }
     }
@@ -83,9 +84,6 @@ fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
     ))
 }
 
-/*
-   "2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n" 
-*/
 fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
     // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
     let (array_size, last) = read_until_crlf(&payload[1..]).unwrap();
@@ -100,10 +98,11 @@ fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
     for _ in 0..array_size{
         match parse_payload(&payload[start..]){
             Ok((buffer, buf_size)) => {
-                // println!("LOG_FROM_parse_array buffer: {}", unwrap_value_to_string(&buffer).unwrap());
-                // println!("LOG_FROM_parse_array --- payload[{}..]: {:?}", start, bytes_to_string(&payload[start..]));
+                println!("LOG_FROM_parse_array buffer: {}", unwrap_value_to_string(&buffer).unwrap());
+                println!("LOG_FROM_parse_array --- payload[{}..]: {:?}", start, bytes_to_string(&payload[start..]));
                 //re-calculation start value
                 let format_prev_bulk_string = format!("${}\r\n{}\r\n", buf_size, unwrap_value_to_string(&buffer).unwrap());
+                println!("LOG_FROM_parse_array --- format: {}", format_prev_bulk_string);
                 start += format_prev_bulk_string.len();
                 array_parsed.push(buffer);
 

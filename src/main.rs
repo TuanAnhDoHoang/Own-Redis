@@ -1,9 +1,11 @@
 mod resp;
+mod store;
 
 use resp::{
     resp::{extract_command, RespHandler},
     value::Value,
 };
+use store::store::Store;
 use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
@@ -36,6 +38,7 @@ async fn main() {
 
 async fn stream_handler(stream: TcpStream) {
     let mut handler: RespHandler = RespHandler::new(stream);
+    let mut storage: Store = Store::new();
     loop {
         let result: Value = match handler.read_value().await {
             Ok(Some(response)) => {
@@ -43,6 +46,15 @@ async fn stream_handler(stream: TcpStream) {
                     match command.as_str() {
                         "PING" => Value::SimpleString("PONG".to_string()),
                         "ECHO" => command_content.get(0).unwrap().clone(),
+                        "SET" => {
+                            let key = command_content.get(0).unwrap().clone();
+                            let value = command_content.get(1).unwrap().clone();
+                            storage.set_value(key, value).unwrap()
+                        },
+                        "GET" =>{
+                            let key = command_content.get(0).unwrap().clone();
+                            storage.get_value(key).unwrap()
+                        }
                         c => {
                             eprintln!("Invalid command: {}", c);
                             break;
