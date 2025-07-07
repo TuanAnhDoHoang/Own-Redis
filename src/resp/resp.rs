@@ -27,9 +27,9 @@ impl RespHandler {
             Err(e) =>  Err(anyhow::anyhow!("Got Error when parse value from stream: {}", e)) 
         }
     }
-    pub async fn write_value(&mut self, payload: &str){
+    pub async fn write_value(&mut self, payload: String){
         // println!("LOG_FROM_write_value -- payload: {}", payload);
-        if self.stream.write_all(Value::serialize(&Value::SimpleString(payload.to_string())).as_bytes()).await.is_ok() {
+        if self.stream.write_all(payload.as_bytes()).await.is_ok() {
             self.stream.flush().await.expect("Failed to flush stream");
             // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
         } else {
@@ -62,7 +62,7 @@ fn parse_simple_string(payload: &[u8]) -> Result<(Value, usize)> {
 
 fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
     //$4\r\nPING\r\n
-    println!("LOG_FROM parse_bulk_string --- payload: {}", bytes_to_string(payload));
+    // println!("LOG_FROM parse_bulk_string --- payload: {}", bytes_to_string(payload));
     if let Some((payload_size, _)) = read_until_crlf(&payload[1..]) {
         //Size of bulk string
         let payload_size: usize = String::from_utf8_lossy(payload_size)
@@ -98,11 +98,11 @@ fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
     for _ in 0..array_size{
         match parse_payload(&payload[start..]){
             Ok((buffer, buf_size)) => {
-                println!("LOG_FROM_parse_array buffer: {}", unwrap_value_to_string(&buffer).unwrap());
-                println!("LOG_FROM_parse_array --- payload[{}..]: {:?}", start, bytes_to_string(&payload[start..]));
+                // println!("LOG_FROM_parse_array buffer: {}", unwrap_value_to_string(&buffer).unwrap());
+                // println!("LOG_FROM_parse_array --- payload[{}..]: {:?}", start, bytes_to_string(&payload[start..]));
                 //re-calculation start value
                 let format_prev_bulk_string = format!("${}\r\n{}\r\n", buf_size, unwrap_value_to_string(&buffer).unwrap());
-                println!("LOG_FROM_parse_array --- format: {}", format_prev_bulk_string);
+                // println!("LOG_FROM_parse_array --- format: {}", format_prev_bulk_string);
                 start += format_prev_bulk_string.len();
                 array_parsed.push(buffer);
 

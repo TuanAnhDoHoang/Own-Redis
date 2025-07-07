@@ -1,5 +1,5 @@
-mod resp;
 mod store;
+mod resp;
 
 use resp::{
     resp::{extract_command, RespHandler},
@@ -49,11 +49,32 @@ async fn stream_handler(stream: TcpStream) {
                         "SET" => {
                             let key = command_content.get(0).unwrap().clone();
                             let value = command_content.get(1).unwrap().clone();
-                            storage.set_value(key, value).unwrap()
+                            match command_content.get(2){ //"PX" "Px" "px" "pX" //pattern regrex
+                                Some(px_command) => {
+                                    if px_command == &Value::BulkString("px".to_string()) ||
+                                       px_command == &Value::BulkString("Px".to_string()) ||
+                                       px_command == &Value::BulkString("pX".to_string()) ||
+                                       px_command == &Value::BulkString("PX".to_string()) 
+                                    {
+                                        if let Some(px) = command_content.get(3){
+                                            match storage.set_value_with_px(key, value, px.clone()){
+                                                Ok(()) => Value::BulkString("OK".to_string()),
+                                                Err(_) => Value::NullBulkString 
+                                            }
+                                        }
+                                        else{Value::NullBulkString}
+                                    }
+                                    else {Value::NullBulkString}
+                                }
+                                None => storage.set_value(key, value).unwrap()
+                            }
                         },
                         "GET" =>{
                             let key = command_content.get(0).unwrap().clone();
-                            storage.get_value(key).unwrap()
+                            match storage.get_value(key){
+                                Ok(value) => value,
+                                Err(_) => Value::NullBulkString 
+                            }
                         }
                         c => {
                             eprintln!("Invalid command: {}", c);
@@ -74,8 +95,9 @@ async fn stream_handler(stream: TcpStream) {
                 break;
             }
         };
+        // println!("LOG_FROM_stream_handler --- result: {:?}", result);
         handler
-            .write_value(resp::resp::unwrap_value_to_string(&result).unwrap().as_str())
+            .write_value(Value::serialize(&result))
             .await;
     }
 }

@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.59"                                   # error handling
 bytes = "1.3.0"                                     # helps manage buffers
+chrono = "0.4.41"
 redis-protocol = {version="6.0.0", features=["bytes"]}
 resp = "1.0.3"
 thiserror = "1.0.32"                                # error handling
