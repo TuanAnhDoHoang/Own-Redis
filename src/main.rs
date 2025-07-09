@@ -57,80 +57,6 @@ async fn stream_handler(stream: TcpStream, mut redis_database: RedisDatabase, mu
         let result: Value = match handler.read_value().await {
             Ok(Some(response)) => {
                 if let Ok((command, command_content)) = extract_command(response) {
-                    // match command.as_str() {
-                    //     "PING" => Value::SimpleString("PONG".to_string()),
-                    //     "ECHO" => command_content.get(0).unwrap().clone(),
-                    //     "SET" => {
-                    //         let key = command_content.get(0).unwrap().clone();
-                    //         let value = command_content.get(1).unwrap().clone();
-                    //         match command_content.get(2) {
-                    //             //"PX" "Px" "px" "pX" //pattern regrex
-                    //             Some(px_command) => {
-                    //                 if px_command == &Value::BulkString("px".to_string())
-                    //                     || px_command == &Value::BulkString("Px".to_string())
-                    //                     || px_command == &Value::BulkString("pX".to_string())
-                    //                     || px_command == &Value::BulkString("PX".to_string())
-                    //                 {
-                    //                     if let Some(px) = command_content.get(3) {
-                    //                         match storage.set_value_with_px(key, value, px.clone())
-                    //                         {
-                    //                             Ok(()) => Value::BulkString("OK".to_string()),
-                    //                             Err(_) => Value::NullBulkString,
-                    //                         }
-                    //                     } else {
-                    //                         Value::NullBulkString
-                    //                     }
-                    //                 } else {
-                    //                     Value::NullBulkString
-                    //                 }
-                    //             }
-                    //             None => storage.set_value(key, value).unwrap(),
-                    //         }
-                    //     }
-                    //     "GET" => {
-                    //         let key = command_content.get(0).unwrap().clone();
-                    //         match storage.get_value(key) {
-                    //             Ok(value) => value,
-                    //             Err(_) => Value::NullBulkString,
-                    //         }
-                    //     }
-                    //     "CONFIG" => match command_content.get(0) {
-                    //         Some(value) => match unwrap_value_to_string(value).unwrap().as_str() {
-                    //             "GET" => {
-                    //                 if let Some(name) = command_content.get(1) {
-                    //                     if name == &Value::BulkString("dir".to_string()) {
-                    //                         Value::Array(
-                    //                             (vec![
-                    //                                 Value::BulkString("dir".to_string()),
-                    //                                 Value::BulkString(
-                    //                                     redis_database.get_dir().unwrap(),
-                    //                                 ),
-                    //                             ]),
-                    //                         )
-                    //                     } else if name == &Value::BulkString("dbfilename".to_string()){
-                    //                         Value::Array(
-                    //                             (vec![
-                    //                                 Value::BulkString("dbfilename".to_string()),
-                    //                                 Value::BulkString(
-                    //                                     redis_database.get_dir_file_name().unwrap(),
-                    //                                 ),
-                    //                             ]),
-                    //                         )
-                    //                     }
-                    //                     else {Value::NullBulkString}
-                    //                 }
-                    //                 else{ Value::NullBulkString}
-                    //             }
-                    //             // "SET" => {}
-                    //             _ => Value::NullBulkString,
-                    //         },
-                    //         None => Value::NullBulkString,
-                    //     },
-                    //     c => {
-                    //         eprintln!("Invalid command: {}", c);
-                    //         break;
-                    //     }
-                    // }
                     command_handler(command, command_content, &mut storage, &mut redis_database, &mut rdb_file)
                 } else {
                     eprintln!("Failed to extract command");
@@ -150,6 +76,7 @@ async fn stream_handler(stream: TcpStream, mut redis_database: RedisDatabase, mu
         handler.write_value(Value::serialize(&result)).await;
     }
 }
+
 fn flags_handler(flags: Vec<String>) -> Result<(RedisDatabase, RdbFile)> {
     let mut redis_database = RedisDatabase::new();
     let mut index = 0;

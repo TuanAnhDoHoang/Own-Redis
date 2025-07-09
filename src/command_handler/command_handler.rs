@@ -3,6 +3,7 @@ use crate::rdb::rdb::RedisDatabase;
 use crate::unwrap_value_to_string;
 use crate::{resp::value::Value, store::store::Store};
 use anyhow::Result;
+use std::collections::HashMap;
 
 pub fn command_handler(
     command: String,
@@ -17,7 +18,7 @@ pub fn command_handler(
         "SET" => {
             handle_set(command_content, storage, redis_database).expect("Error when handle SET")
         }
-        "GET" => handle_get(command_content, storage).expect("Error when handle GET"),
+        "GET" => handle_get(command_content, storage, rdb_file).expect("Error when handle GET"),
         "CONFIG" => {
             handle_config(command_content, redis_database).expect("Error when handle CONFIG")
         }
@@ -81,15 +82,26 @@ fn handle_set(
     let _ = redis_database.save_key_to_rdb(key.as_str());
     result
 }
-fn handle_get(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+fn handle_get(command_content: Vec<Value>, storage: &mut Store, rdb_file: &mut RdbFile) -> Result<Value> {
     let key = command_content.get(0).unwrap().clone();
     let key = unwrap_value_to_string(&key).expect(&format!(
         "Get error when unwrap Value key {:?} to string",
         key
     ));
-    match storage.get_value(key) {
+    let rdb_file_collections: HashMap<String, String> = rdb_file.map.iter().map(|(key, entry)| {
+        if let Some(px) = entry.1 {
+            if px > chrono::Utc::now(){ return (key.to_owned(), entry.0.clone()); }
+            else{ ("".to_string(), "".to_string())}
+        }
+        else { return (key.to_owned(), entry.0.clone()); }
+    }).collect::<HashMap<String, String>>();
+
+    match storage.get_value(key.clone()) {
         Ok(value) => Ok(Value::BulkString(value)),
-        Err(_) => Ok(Value::NullBulkString),
+        Err(_) => {
+            if let Some(value) = rdb_file_collections.get(&key){ Ok(Value::BulkString(value.to_owned()))}
+            else {Ok(Value::NullBulkString)}
+        },
     }
 }
 fn handle_config(command_content: Vec<Value>, redis_database: &mut RedisDatabase) -> Result<Value> {
@@ -122,7 +134,7 @@ fn handle_config(command_content: Vec<Value>, redis_database: &mut RedisDatabase
 }
 fn handle_key(command_content: Vec<Value>, rdb_file: &mut RdbFile) -> Result<Value> {
     let pattern: Value = command_content.get(0).unwrap().clone();
-    let mut pattern: String = unwrap_value_to_string(&pattern).expect(&format!(
+    let pattern: String = unwrap_value_to_string(&pattern).expect(&format!(
         "Get error when unwrap Value pattern {:?} to string",
         pattern
     ));
