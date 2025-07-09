@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use crate::resp::{resp::unwrap_value_to_string, value::Value};
 
 pub struct Store {
     collections: HashMap<String, String>,
@@ -15,15 +14,12 @@ impl Store {
         }
     }
 
-    pub fn set_value(&mut self, key: Value, value: Value) -> Result<Value>{
-        let key = unwrap_value_to_string(&key).expect("error when unwrap value of key");
-        let value = unwrap_value_to_string(&value).expect("Error when unwrap value of value");
+    pub fn set_value(&mut self, key: String, value: String) -> Result<String>{
         self.collections.insert(key, value);
-        Ok(Value::SimpleString("OK".to_string()))
+        Ok(String::from("OK"))
     }
 
-    pub fn get_value(&self, key: Value) -> Result<Value>{
-        let key = unwrap_value_to_string(&key).expect("error when unwrap value of key");
+    pub fn get_value(&self, key: String) -> Result<String>{
         //get in expired time collection first and check if it is expired or not
         //if it not, then get value in collection
         match self.px_collection.get::<String>(&key){
@@ -34,7 +30,7 @@ impl Store {
 
                 }
                 if let Some(value) = self.collections.get::<String>(&key){
-                    return Ok(Value::SimpleString(value.to_owned()));
+                    return Ok(value.to_owned());
                 }
                 else{
                     Err(anyhow::anyhow!("Error when get_value -- key {} dont has any value", key))
@@ -42,21 +38,18 @@ impl Store {
             }
             None => {
                 if let Some(value) = self.collections.get::<String>(&key){
-                    return Ok(Value::SimpleString(value.to_owned()));
+                    return Ok(value.to_owned());
                 }
                 else {Err(anyhow::anyhow!("Error when get_value -- key {} dont has any value", key))} 
             }
         }
     }
 
-    pub fn set_value_with_px(&mut self, key: Value, value: Value, px: Value) -> Result<()>{
-        let key: String = unwrap_value_to_string(&key).expect("error when unwrap value of key");
-        let value: String = unwrap_value_to_string(&value).expect("Error when unwrap value of value");
-        let px: String = unwrap_value_to_string(&px).expect("Error when unwrap value of px");
+    pub fn set_value_with_px(&mut self, key: String, value: String, px: String) -> Result<String>{
         let px_time: i64 = px.parse::<i64>().expect(format!("Got error when parse px time : {}", px).as_str());
 
         self.px_collection.insert(key.clone(), chrono::Utc::now() + Duration::milliseconds(px_time));
         self.collections.insert(key, value);
-        Ok(())
+        Ok(String::from("OK"))
     }
 }

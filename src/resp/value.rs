@@ -19,7 +19,7 @@ impl Value {
                }
                result
             } 
-            _ => panic!("Unsupport value for serialization"),
+            // _ => panic!("Unsupport value for serialization"),
         }
     }
 }
