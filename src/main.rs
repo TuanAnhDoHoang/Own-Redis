@@ -115,7 +115,7 @@ async fn connect_to_master(rdb_argument: Argument, address: String, port: usize)
     let payload_step_1: String =
         Value::serialize(&Value::Array(vec![Value::BulkString("PING".to_string())]));
     let payload_step_2_once: String = Value::serialize(&Value::Array(vec![
-        Value::BulkString("REPLCONF listening-port <PORT>".to_string()),
+        Value::BulkString("REPLCONF".to_string()),
         Value::BulkString("listening-port".to_string()),
         Value::BulkString(format!("{}", rdb_argument.get_port().unwrap())),
     ]));
