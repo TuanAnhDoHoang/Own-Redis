@@ -5,6 +5,8 @@ use crate::resp::value::{self, Value};
 #[derive(Clone)]
 pub struct Replication {
     role: Role,
+    master_replid: String,
+    master_repl_offset: usize
 }
 #[derive(Clone)]
 pub enum Role {
@@ -24,7 +26,11 @@ impl Role {
 
 impl Replication {
     pub fn new() -> Self{
-        Replication { role: Role::master }
+        Replication { 
+            role: Role::master,
+            master_replid: String::from("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"), //random alphanumeric 40 characters
+            master_repl_offset: 0
+        }
     }
     pub fn set_role(&mut self, role: Role) -> Result<()> {
         self.role = role;
@@ -35,6 +41,13 @@ impl Replication {
         //     "role:{}",
         //     self.role.to_string()
         // ))]))
-        Ok(Value::BulkString(format!("role:{}", self.role.to_string())))
+        Ok(Value::BulkString(
+            format!(
+                "role:{}\r\nmaster_replid:{}\r\nmaster_repl_offset:{}", 
+                self.role.to_string(),
+                self.master_replid,
+                self.master_repl_offset
+            )
+        ))
     }
 }

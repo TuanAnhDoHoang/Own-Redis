@@ -2,8 +2,8 @@
 pub enum Value {
     SimpleString(String),
     BulkString(String),
-    NullBulkString,
     Array(Vec<Value>),
+    NullBulkString,
 }
 impl Value {
     pub fn serialize(&self) -> String {

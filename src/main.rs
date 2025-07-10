@@ -21,7 +21,6 @@ use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
 async fn main() {
-    println!("Logs from your program will appear here!");
     let args: Vec<String> = env::args().collect();
 
     let (rdb_argument, rdb_file, replication) = flags_handler(args.into_iter().skip(1).collect()).unwrap();
@@ -33,7 +32,6 @@ async fn main() {
             std::process::exit(1);
         });
 
-    println!("Server listening on 127.0.0.1:6379");
 
     loop {
         match listener.accept().await {
@@ -91,46 +89,3 @@ async fn stream_handler(
         handler.write_value(Value::serialize(&result)).await;
     }
 }
-
-// fn flags_handler(flags: Vec<String>) -> Result<(Argument, RdbFile)> {
-//     let mut rdb_argument = Argument::new();
-//     let mut rdb_file = RdbFile::new();
-
-//     let mut index = 0;
-//     while index < flags.len() {
-//         let flag_name = flags[index].clone();
-//         match flag_name.as_str() {
-//             "--dir" => match flags.get(index + 1) {
-//                 Some(dir) => {
-//                     let _ = rdb_argument.set_dir(dir.to_owned());
-//                 }
-//                 None => panic!("Need a directory"),
-//             },
-//             "--dbfilename" => match flags.get(index + 1) {
-//                 Some(dir_file_name) => {
-//                     let _ = rdb_argument.set_dir_file_name(dir_file_name.to_owned());
-//                 }
-//                 None => panic!("Need a file name"),
-//             },
-//             "--port" => match flags.get(index + 1) {
-//                 Some(port_number) => {
-//                     let _ = rdb_argument.set_port(port_number.parse::<usize>().expect("Error when parse port number"));
-//                 }
-//                 None => panic!("Need a file name"),
-//             },
-//             _ => panic!("Invalid flags name: {}", flag_name),
-//         }
-//         index += 2;
-//     }
-
-//     let path: PathBuf = PathBuf::from(rdb_argument.get_dir().unwrap_or("./".into()))
-//     .join(rdb_argument.get_dir_file_name().unwrap_or("dump.rdb".into()));
-
-//     if path.exists(){
-//         (_, rdb_file) = parse_rdb::parse_rdb_file(
-//             std::fs::read(path).unwrap().as_slice()
-//         ).unwrap();
-//         // println!("LOG_FROM_flags_hanlder --- rdb_file: {:?}", rdb_file);
-//     }
-//     Ok((rdb_argument, rdb_file))
-// }
