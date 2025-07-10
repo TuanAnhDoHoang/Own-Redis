@@ -1,5 +1,6 @@
 use crate::rdb::parse_rdb::RdbFile;
-use crate::rdb::rdb::RedisDatabase;
+use crate::rdb::argument::Argument;
+use crate::rdb::replication::Replication;
 use crate::unwrap_value_to_string;
 use crate::{resp::value::Value, store::store::Store};
 use anyhow::Result;
@@ -9,21 +10,22 @@ pub fn command_handler(
     command: String,
     command_content: Vec<Value>,
     storage: &mut Store,
-    redis_database: &mut RedisDatabase,
+    rdb_argument: &mut Argument,
     rdb_file: &mut RdbFile,
+    replication: &mut Replication
 ) -> Value {
     match command.as_str() {
         "PING" => handle_ping().expect("Error when handle PING"),
         "ECHO" => handle_echo(command_content).expect("Error when handle ECHO"),
         "SET" => {
-            handle_set(command_content, storage, redis_database).expect("Error when handle SET")
+            handle_set(command_content, storage, rdb_argument).expect("Error when handle SET")
         }
         "GET" => handle_get(command_content, storage, rdb_file).expect("Error when handle GET"),
         "CONFIG" => {
-            handle_config(command_content, redis_database).expect("Error when handle CONFIG")
+            handle_config(command_content, rdb_argument).expect("Error when handle CONFIG")
         }
         "KEYS" => handle_key(command_content, rdb_file).expect("Error when handle KEY"),
-        "INFO" => handle_info().expect("Error when handle KEY"),
+        "INFO" => handle_info(command_content, replication).expect("Error when handle KEY"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -39,7 +41,7 @@ fn handle_echo(command_content: Vec<Value>) -> Result<Value> {
 fn handle_set(
     command_content: Vec<Value>,
     storage: &mut Store,
-    redis_database: &mut RedisDatabase,
+    rdb_argument: &mut Argument,
 ) -> Result<Value> {
     let key = command_content.get(0).unwrap().clone();
     let value = command_content.get(1).unwrap().clone();
@@ -52,7 +54,7 @@ fn handle_set(
         value
     ));
 
-    let result = match command_content.get(2) {
+    match command_content.get(2) {
         //"PX" "Px" "px" "pX" //pattern regrex
         Some(px_command) => {
             if px_command == &Value::BulkString("px".to_string())
@@ -79,9 +81,7 @@ fn handle_set(
         None => Ok(Value::SimpleString(
             storage.set_value(key.clone(), value).unwrap(),
         )),
-    };
-    let _ = redis_database.save_key_to_rdb(key.as_str());
-    result
+    }
 }
 fn handle_get(command_content: Vec<Value>, storage: &mut Store, rdb_file: &mut RdbFile) -> Result<Value> {
     let key = command_content.get(0).unwrap().clone();
@@ -105,7 +105,7 @@ fn handle_get(command_content: Vec<Value>, storage: &mut Store, rdb_file: &mut R
         },
     }
 }
-fn handle_config(command_content: Vec<Value>, redis_database: &mut RedisDatabase) -> Result<Value> {
+fn handle_config(command_content: Vec<Value>, rdb_argument: &mut Argument) -> Result<Value> {
     match command_content.get(0) {
         Some(value) => match unwrap_value_to_string(value).unwrap().as_str() {
             "GET" => {
@@ -113,12 +113,12 @@ fn handle_config(command_content: Vec<Value>, redis_database: &mut RedisDatabase
                     if name == &Value::BulkString("dir".to_string()) {
                         Ok(Value::Array(vec![
                             Value::BulkString("dir".to_string()),
-                            Value::BulkString(redis_database.get_dir().unwrap()),
+                            Value::BulkString(rdb_argument.get_dir().unwrap()),
                         ]))
                     } else if name == &Value::BulkString("dbfilename".to_string()) {
                         Ok(Value::Array(vec![
                             Value::BulkString("dbfilename".to_string()),
-                            Value::BulkString(redis_database.get_dir_file_name().unwrap()),
+                            Value::BulkString(rdb_argument.get_dir_file_name().unwrap()),
                         ]))
                     } else {
                         Ok(Value::NullBulkString)
@@ -166,6 +166,15 @@ fn handle_key(command_content: Vec<Value>, rdb_file: &mut RdbFile) -> Result<Val
         _ => Err(anyhow::anyhow!("Pattern error")),
     }
 }
-fn handle_info() -> Result<Value>{
-    Ok(Value::BulkString("role:master".to_string()))
+fn handle_info(command_content: Vec<Value>, replication: &mut Replication) -> Result<Value>{
+    if let Some(arg) = command_content.get(0){
+        let arg: String = unwrap_value_to_string(arg).unwrap();
+        match arg.as_str(){
+            "replication" => Ok(replication.display_to_value().unwrap()),
+            _ => Ok(Value::BulkString("role:master".to_string()))
+        }
+    }
+    else {
+        Ok(Value::BulkString("role:master".to_string()))
+    }
 }
