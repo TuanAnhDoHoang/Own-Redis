@@ -105,7 +105,7 @@ fn flags_handler(flags: Vec<String>) -> Result<(RedisDatabase, RdbFile, usize)> 
             },
             _ => panic!("Invalid flags name: {}", flag_name),
         }
-        index += 2;
+        index += 2; 
     }
 
     let path: PathBuf = PathBuf::from(redis_database.get_dir().unwrap_or("./".into()))

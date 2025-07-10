@@ -23,6 +23,7 @@ pub fn command_handler(
             handle_config(command_content, redis_database).expect("Error when handle CONFIG")
         }
         "KEYS" => handle_key(command_content, rdb_file).expect("Error when handle KEY"),
+        "INFO" => handle_info().expect("Error when handle KEY"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -164,4 +165,7 @@ fn handle_key(command_content: Vec<Value>, rdb_file: &mut RdbFile) -> Result<Val
         }
         _ => Err(anyhow::anyhow!("Pattern error")),
     }
+}
+fn handle_info() -> Result<Value>{
+    Ok(Value::BulkString("role:master".to_string()))
 }
