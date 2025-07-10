@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::resp::value::{self, Value};
+use crate::resp::value::{Value};
 
 #[derive(Clone)]
 pub struct Replication {
@@ -12,7 +12,6 @@ pub struct Replication {
 pub enum Role {
     master,
     slave,
-    none,
 }
 impl Role {
     fn to_string(&self) -> String {

@@ -7,13 +7,15 @@ pub struct Argument{
     dir: String,
     db_file_name:String,
     port: usize,
+    master_endpoint: String
 }
 impl Argument{
     pub fn new() -> Self{
         Argument { 
             dir: String::new(), 
             db_file_name: String::new(),
-            port: 6379
+            port: 6379,
+            master_endpoint: String::from("127.0.0.1:0")
         }
     }
     pub fn set_dir(&mut self, dir: String) -> Result<()>{
@@ -39,7 +41,17 @@ impl Argument{
     pub fn get_port(&self) -> Result<usize>{
         Ok(self.port)
     }
-    
+    pub fn get_master_endpoint(&self) -> Result<(String, usize)>{
+        let mut master_endpoint = self.master_endpoint.split(":");
+        let address = master_endpoint.next().unwrap().to_string();
+        let port = master_endpoint.next().unwrap().parse::<usize>().unwrap();
+        Ok((address, port))
+    }
+    pub fn set_master_endpoint(&mut self, address: String, port: usize) -> Result<()>{
+        println!("LOG_FROM_set_master_endpoint -- address: {}, port: {}", address, port);
+        self.master_endpoint = format!("{}:{}", address, port);
+        Ok(())
+    }
 }
 
 pub fn flags_handler(flags: Vec<String>) -> Result<(Argument, RdbFile, Replication)> {
@@ -71,7 +83,13 @@ pub fn flags_handler(flags: Vec<String>) -> Result<(Argument, RdbFile, Replicati
             },
             "--replicaof" => match flags.get(index+1) {
                 Some(master_endpoint) => {
-                    replication.set_role(Role::slave).expect("Error when set role in replication")
+                    replication.set_role(Role::slave).expect("Error when set role in replication");
+
+                    let mut m_endpoint = master_endpoint.split_whitespace();
+                    let _ = rdb_argument.set_master_endpoint(
+                        m_endpoint.next().unwrap().to_string(), 
+                        m_endpoint.next().unwrap().parse::<usize>().unwrap()
+                    );
                 } 
                 None => panic!("Need a file name"),
             }
