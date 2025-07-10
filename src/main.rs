@@ -18,7 +18,7 @@ use resp::{
     resp::{extract_command, RespHandler},
     value::Value,
 };
-use std::env;
+use std::{env, fmt::format};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -107,37 +107,34 @@ async fn stream_handler(
 }
 
 async fn connect_to_master(rdb_argument: Argument, address: String, port: usize) {
-    let mut connection = TcpStream::connect(format!("{}:{}", address, port))
+    let stream = TcpStream::connect(format!("{}:{}", address, port))
         .await
         .unwrap();
-    let _ = connection
-        .write_all("*1\r\n$4\r\nPING\r\n".as_bytes())
-        .await
-        .unwrap();
-    let _ = connection.flush().await;
-    let mut buf: [u8; 1024] = [0; 1024];
-    let _ = connection.read(&mut buf).await;
+    let mut handler = RespHandler::new(stream);
 
-    let _ = connection
-        .write_all(
-            format!(
-                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
-                rdb_argument.get_port().unwrap()
-            )
-            .as_bytes(),
-        )
-        .await
-        .unwrap();
-    let _ = connection.flush().await;
-    let mut buf: [u8; 1024] = [0; 1024];
-    let _ = connection.read(&mut buf).await;
-    let _ = connection
-        .write_all("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n".as_bytes())
-        .await
-        .unwrap();
-    let _ = connection.flush().await;
-    let mut buf: [u8; 1024] = [0; 1024];
-    let _ = connection.read(&mut buf).await;
-    // let mut buf: [u8; 1024]  = [0;1024];
-    // let _ = connection.read(&mut buf).await;
+    let payload_step_1: String =
+        Value::serialize(&Value::Array(vec![Value::BulkString("PING".to_string())]));
+    let payload_step_2_once: String = Value::serialize(&Value::Array(vec![
+        Value::BulkString("REPLCONF listening-port <PORT>".to_string()),
+        Value::BulkString("listening-port".to_string()),
+        Value::BulkString(format!("{}", rdb_argument.get_port().unwrap())),
+    ]));
+    let payload_step_2_twice: String = Value::serialize(&Value::Array(vec![
+        Value::BulkString("REPLCONF".to_string()),
+        Value::BulkString("capa".to_string()),
+        Value::BulkString("psync2".to_string())
+    ]));
+
+    let payload_step_3: String = Value::serialize(&Value::Array(vec![
+        Value::BulkString("PSYNC".to_string()),
+        Value::BulkString("?".to_string()),
+        Value::BulkString("-1".to_string())
+    ]));
+    
+
+    let payloads = vec![payload_step_1, payload_step_2_once, payload_step_2_twice, payload_step_3];
+    for payload in payloads{
+        handler.write_value(payload).await;
+        let _ = handler.read_value().await.unwrap().unwrap();
+    }
 }
