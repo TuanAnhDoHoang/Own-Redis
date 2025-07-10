@@ -44,9 +44,13 @@ pub fn parse_rdb_file(input: &[u8]) -> IResult<&[u8], RdbFile>{
     let (input, _) = (tag(&b"REDIS"[..]), take_while_m_n(4, 4, |c: u8| c.is_ascii_digit())).parse(input)?;
     let (input, _) = many0(alt((parse_metadata_section, parse_database_section))).parse(input)?;
 
-    let (input, (key, val)) = parse_key_value(input)?;
-    let mut map = HashMap::new();
-    map.insert(key, val);
+    // let (input, (key, val)) = parse_key_value(input)?;
+    // let mut map = HashMap::new();
+    // map.insert(key, val);
+    let (input, collecs) = many0(parse_key_value).parse(input)?;
+    let map = collecs.iter().map(|(key, entry)|{
+        return (key.to_owned(), entry.to_owned());
+    }).collect::<HashMap<String, Entry>>();
 
     Ok((input, RdbFile { map }))
 
