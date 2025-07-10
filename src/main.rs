@@ -13,13 +13,14 @@ use crate::{
     resp::resp::unwrap_value_to_string,
     store::store::Store,
 };
+use bytes::buf;
 use resp::{
     resp::{extract_command, RespHandler},
     value::Value,
 };
 use std::env;
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
@@ -38,13 +39,8 @@ async fn main() {
         });
 
     let (m_address, m_port) = rdb_argument.get_master_endpoint().unwrap();
-    if m_port != 0{
-        let mut connection = TcpStream::connect(format!("{}:{}", m_address, m_port))
-            .await
-            .unwrap();
-        let _ = connection
-            .write_all("*1\r\n$4\r\nPING\r\n".as_bytes())
-            .await;
+    if m_port != 0 {
+        connect_to_master(rdb_argument.clone(), m_address, m_port).await;
     }
 
     loop {
@@ -108,4 +104,40 @@ async fn stream_handler(
         // println!("LOG_FROM_stream_handler --- result: {:?}", result);
         handler.write_value(Value::serialize(&result)).await;
     }
+}
+
+async fn connect_to_master(rdb_argument: Argument, address: String, port: usize) {
+    let mut connection = TcpStream::connect(format!("{}:{}", address, port))
+        .await
+        .unwrap();
+    let _ = connection
+        .write_all("*1\r\n$4\r\nPING\r\n".as_bytes())
+        .await
+        .unwrap();
+    let _ = connection.flush().await;
+    let mut buf: [u8; 1024] = [0; 1024];
+    let _ = connection.read(&mut buf).await;
+
+    let _ = connection
+        .write_all(
+            format!(
+                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
+                rdb_argument.get_port().unwrap()
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let _ = connection.flush().await;
+    let mut buf: [u8; 1024] = [0; 1024];
+    let _ = connection.read(&mut buf).await;
+    let _ = connection
+        .write_all("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n".as_bytes())
+        .await
+        .unwrap();
+    let _ = connection.flush().await;
+    let mut buf: [u8; 1024] = [0; 1024];
+    let _ = connection.read(&mut buf).await;
+    // let mut buf: [u8; 1024]  = [0;1024];
+    // let _ = connection.read(&mut buf).await;
 }
