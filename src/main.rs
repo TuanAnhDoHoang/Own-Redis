@@ -122,18 +122,27 @@ async fn connect_to_master(rdb_argument: Argument, address: String, port: usize)
     let payload_step_2_twice: String = Value::serialize(&Value::Array(vec![
         Value::BulkString("REPLCONF".to_string()),
         Value::BulkString("capa".to_string()),
-        Value::BulkString("psync2".to_string())
+        Value::BulkString("psync2".to_string()),
     ]));
 
     let payload_step_3: String = Value::serialize(&Value::Array(vec![
         Value::BulkString("PSYNC".to_string()),
         Value::BulkString("?".to_string()),
-        Value::BulkString("-1".to_string())
+        Value::BulkString("-1".to_string()),
     ]));
-    
 
-    let payloads = vec![payload_step_1, payload_step_2_once, payload_step_2_twice, payload_step_3];
-    for payload in payloads{
+    let empty_rdb_file  = String::from("524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2");
+    let payload_last_step = Value::serialize(&Value::BulkStringNoCRLF(empty_rdb_file));
+
+    let payloads = vec![
+        payload_step_1,
+        payload_step_2_once,
+        payload_step_2_twice,
+        payload_step_3,
+        payload_last_step,
+    ];
+
+    for payload in payloads {
         handler.write_value(payload).await;
         let _ = handler.read_value().await.unwrap().unwrap();
     }
