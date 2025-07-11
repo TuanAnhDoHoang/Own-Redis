@@ -28,12 +28,21 @@ impl RespHandler {
         }
     }
     pub async fn write_value(&mut self, payload: String){
-        // println!("LOG_FROM_write_value -- payload: {}", payload);
+        println!("LOG_FROM_write_value -- payload: {}", payload);
         if self.stream.write_all(payload.as_bytes()).await.is_ok() {
             self.stream.flush().await.expect("Failed to flush stream");
             // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
         } else {
             println!("Failed to send response ");
+        }
+
+        if payload == Value::serialize(&Value::SimpleString(format!("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"))){
+            let empty_rdb_file = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+            let rdb_bytes = hex::decode(empty_rdb_file).unwrap();
+            let header = format!("${}\r\n", rdb_bytes.len());
+            self.stream.write_all(header.as_bytes()).await.unwrap();
+            self.stream.write_all(&rdb_bytes).await.unwrap();
+            self.stream.flush().await.expect("Failed to flush stream");
         }
     }
 }

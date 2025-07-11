@@ -184,5 +184,5 @@ fn handle_replconf() -> Result<Value> {
     Ok(Value::SimpleString("OK".to_string()))
 }
 fn handle_psync(replication: &mut Replication) -> Result<Value>{
-    Ok(Value::SimpleString(format!("FULLRESYNC {} 0\r\n", replication.get_master_replid().unwrap())))
+    Ok(Value::SimpleString(format!("FULLRESYNC {} 0", replication.get_master_replid().unwrap())))
 }

@@ -13,16 +13,12 @@ use crate::{
     resp::resp::unwrap_value_to_string,
     store::store::Store,
 };
-use bytes::buf;
 use resp::{
     resp::{extract_command, RespHandler},
     value::Value,
 };
-use std::{env, fmt::format};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use std::env;
+use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
 async fn main() {
@@ -103,6 +99,19 @@ async fn stream_handler(
         };
         // println!("LOG_FROM_stream_handler --- result: {:?}", result);
         handler.write_value(Value::serialize(&result)).await;
+
+        // if result
+        //     == Value::SimpleString(format!(
+        //         "FULLRESYNC {} 0",
+        //         replication.get_master_replid().unwrap()
+        //     ))
+        // {
+        //     let empty_rdb_file = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+        //     let rdb_bytes = hex::decode(empty_rdb_file).unwrap();
+        //     let header = format!("${}\r\n", rdb_bytes.len());
+        //     stream.write_all(header.as_bytes()).unwrap();
+        //     stream.write_all(&rdb_bytes).unwrap();
+        // }
     }
 }
 
@@ -131,18 +140,15 @@ async fn connect_to_master(rdb_argument: Argument, address: String, port: usize)
         Value::BulkString("-1".to_string()),
     ]));
 
-    let empty_rdb_file  = String::from("524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2");
-    let payload_last_step = Value::serialize(&Value::BulkStringNoCRLF(empty_rdb_file));
-
     let payloads = vec![
         payload_step_1,
         payload_step_2_once,
         payload_step_2_twice,
         payload_step_3,
-        payload_last_step,
     ];
 
     for payload in payloads {
+        // let resp_string = Value::serialize(&Value::BulkString(payload));
         handler.write_value(payload).await;
         let _ = handler.read_value().await.unwrap().unwrap();
     }
