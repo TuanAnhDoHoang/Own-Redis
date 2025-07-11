@@ -26,6 +26,7 @@ pub fn command_handler(
         }
         "KEYS" => handle_key(command_content, rdb_file).expect("Error when handle KEY"),
         "INFO" => handle_info(command_content, replication).expect("Error when handle KEY"),
+        "REPLCONF" => handle_replconf().expect("Error when handle replconf"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -177,4 +178,7 @@ fn handle_info(command_content: Vec<Value>, replication: &mut Replication) -> Re
     else {
         Ok(Value::BulkString("role:master".to_string()))
     }
+}
+fn handle_replconf() -> Result<Value> {
+    Ok(Value::SimpleString("OK".to_string()))
 }
