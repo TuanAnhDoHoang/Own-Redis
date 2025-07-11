@@ -49,4 +49,7 @@ impl Replication {
             )
         ))
     }
+    pub fn get_master_replid(&self) -> Result<String>{
+        Ok(self.master_replid.clone())
+    }
 }

@@ -27,6 +27,7 @@ pub fn command_handler(
         "KEYS" => handle_key(command_content, rdb_file).expect("Error when handle KEY"),
         "INFO" => handle_info(command_content, replication).expect("Error when handle KEY"),
         "REPLCONF" => handle_replconf().expect("Error when handle replconf"),
+        "PSYNC" => handle_psync(replication).expect("Error when handle psync"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -181,4 +182,7 @@ fn handle_info(command_content: Vec<Value>, replication: &mut Replication) -> Re
 }
 fn handle_replconf() -> Result<Value> {
     Ok(Value::SimpleString("OK".to_string()))
+}
+fn handle_psync(replication: &mut Replication) -> Result<Value>{
+    Ok(Value::SimpleString(format!("FULLRESYNC {} 0\r\n", replication.get_master_replid().unwrap())))
 }
