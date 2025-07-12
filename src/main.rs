@@ -8,7 +8,7 @@ use crate::{
     rdb::{
         argument::{flags_handler, Argument},
         parse_rdb::RdbFile,
-        replication::Replication,
+        replication::{Replication},
     },
     resp::resp::unwrap_value_to_string,
     store::store::Store,
@@ -17,16 +17,18 @@ use resp::{
     resp::{extract_command, RespHandler},
     value::Value,
 };
-use std::env;
+use std::{env, sync::Arc};
+use tokio::sync::Mutex;
 use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-
+    //handle flags
     let (rdb_argument, rdb_file, replication) =
         flags_handler(args.into_iter().skip(1).collect()).unwrap();
 
+    //create listener
     let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))
         .await
         .unwrap_or_else(|e| {
@@ -34,11 +36,14 @@ async fn main() {
             std::process::exit(1);
         });
 
-    let (m_address, m_port) = rdb_argument.get_master_endpoint().unwrap();
-    if m_port != 0 {
-        connect_to_master(rdb_argument.clone(), m_address, m_port).await;
+    //connect to master if it's slave
+    let (master_address, master_port) = rdb_argument.get_master_endpoint().unwrap();
+    if master_port != 0 {
+        connect_to_master(rdb_argument.clone(), master_address, master_port).await;
     }
 
+    //listener accept connection
+    let replication = Arc::new(Mutex::new(replication));
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
@@ -67,22 +72,27 @@ async fn stream_handler(
     stream: TcpStream,
     mut rdb_argument: Argument,
     mut rdb_file: RdbFile,
-    mut replication: Replication,
+    replication: Arc<Mutex<Replication>>
 ) {
-    let mut handler: RespHandler = RespHandler::new(stream);
+    let handler= Arc::new(Mutex::new(RespHandler::new(stream)));
     let mut storage: Store = Store::new();
     loop {
+        let handler_clone = handler.clone();
+        let mut handler = handler_clone.lock().await;
+
         let result: Value = match handler.read_value().await {
             Ok(Some(response)) => {
                 if let Ok((command, command_content)) = extract_command(response) {
+                    let replication_clone = replication.clone();
                     command_handler(
                         command,
                         command_content,
+                        handler_clone.clone(),
                         &mut storage,
                         &mut rdb_argument,
                         &mut rdb_file,
-                        &mut replication,
-                    )
+                        replication_clone,
+                    ).await
                 } else {
                     eprintln!("Failed to extract command");
                     break;
@@ -99,19 +109,6 @@ async fn stream_handler(
         };
         // println!("LOG_FROM_stream_handler --- result: {:?}", result);
         handler.write_value(Value::serialize(&result)).await;
-
-        // if result
-        //     == Value::SimpleString(format!(
-        //         "FULLRESYNC {} 0",
-        //         replication.get_master_replid().unwrap()
-        //     ))
-        // {
-        //     let empty_rdb_file = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
-        //     let rdb_bytes = hex::decode(empty_rdb_file).unwrap();
-        //     let header = format!("${}\r\n", rdb_bytes.len());
-        //     stream.write_all(header.as_bytes()).unwrap();
-        //     stream.write_all(&rdb_bytes).unwrap();
-        // }
     }
 }
 

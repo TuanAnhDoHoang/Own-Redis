@@ -1,10 +1,12 @@
-use crate::{rdb, resp::value::Value};
+use crate::{resp::value::Value};
 use anyhow::Result;
 use std::usize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
+
+#[derive(Debug)]
 pub struct RespHandler {
     stream: TcpStream,
     // buffer: BytesMut
@@ -59,9 +61,9 @@ impl RespHandler {
         }
     }
 
-    pub async fn write_multip_values(&mut self, payloads: Vec<String>) {
+    pub async fn write_multip_values(&mut self, payloads: Vec<Vec<u8>>) {
         for payload in payloads {
-            self.stream.write_all(payload.as_bytes()).await.unwrap();
+            self.stream.write_all(&payload).await.unwrap();
         }
         self.stream.flush().await.expect("Failed to flush stream");
     }

@@ -1,33 +1,37 @@
 use crate::rdb::parse_rdb::RdbFile;
 use crate::rdb::argument::Argument;
-use crate::rdb::replication::Replication;
+use crate::rdb::replication::{propagation, Replication};
+use crate::resp::resp::RespHandler;
 use crate::unwrap_value_to_string;
 use crate::{resp::value::Value, store::store::Store};
 use anyhow::Result;
 use std::collections::HashMap;
+use tokio::sync::{Mutex};
+use std::sync::{Arc};
 
-pub fn command_handler(
+pub async fn command_handler(
     command: String,
     command_content: Vec<Value>,
+    stream_hander: Arc<Mutex<RespHandler>>,
     storage: &mut Store,
     rdb_argument: &mut Argument,
     rdb_file: &mut RdbFile,
-    replication: &mut Replication
+    replication: Arc<Mutex<Replication>> 
 ) -> Value {
     match command.as_str() {
         "PING" => handle_ping().expect("Error when handle PING"),
         "ECHO" => handle_echo(command_content).expect("Error when handle ECHO"),
         "SET" => {
-            handle_set(command_content, storage, rdb_argument).expect("Error when handle SET")
+            handle_set(command_content, storage, replication).await.expect("Error when handle SET")
         }
         "GET" => handle_get(command_content, storage, rdb_file).expect("Error when handle GET"),
         "CONFIG" => {
             handle_config(command_content, rdb_argument).expect("Error when handle CONFIG")
         }
         "KEYS" => handle_key(command_content, rdb_file).expect("Error when handle KEY"),
-        "INFO" => handle_info(command_content, replication).expect("Error when handle KEY"),
+        "INFO" => handle_info(command_content, replication).await.expect("Error when handle KEY"),
         "REPLCONF" => handle_replconf().expect("Error when handle replconf"),
-        "PSYNC" => handle_psync(replication).expect("Error when handle psync"),
+        "PSYNC" => handle_psync(replication, stream_hander).await.expect("Error when handle psync"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -40,10 +44,10 @@ fn handle_ping() -> Result<Value> {
 fn handle_echo(command_content: Vec<Value>) -> Result<Value> {
     Ok(command_content.get(0).unwrap().clone())
 }
-fn handle_set(
+async fn handle_set(
     command_content: Vec<Value>,
     storage: &mut Store,
-    rdb_argument: &mut Argument,
+    replication: Arc<Mutex<Replication>>
 ) -> Result<Value> {
     let key = command_content.get(0).unwrap().clone();
     let value = command_content.get(1).unwrap().clone();
@@ -56,7 +60,7 @@ fn handle_set(
         value
     ));
 
-    match command_content.get(2) {
+    let result = match command_content.get(2) {
         //"PX" "Px" "px" "pX" //pattern regrex
         Some(px_command) => {
             if px_command == &Value::BulkString("px".to_string())
@@ -69,7 +73,7 @@ fn handle_set(
                         "Get error when unwrap Value px {:?} to string",
                         px
                     ));
-                    match storage.set_value_with_px(key.clone(), value, px.clone()) {
+                    match storage.set_value_with_px(key.clone(), value.clone(), px.clone()) {
                         Ok(value) => Ok(Value::SimpleString(value)),
                         Err(_) => Ok(Value::NullBulkString),
                     }
@@ -81,9 +85,11 @@ fn handle_set(
             }
         }
         None => Ok(Value::SimpleString(
-            storage.set_value(key.clone(), value).unwrap(),
+            storage.set_value(key.clone(), value.clone()).unwrap(),
         )),
-    }
+    };
+    propagation(replication.clone(), key.clone(), value.clone()).await;
+    result
 }
 fn handle_get(command_content: Vec<Value>, storage: &mut Store, rdb_file: &mut RdbFile) -> Result<Value> {
     let key = command_content.get(0).unwrap().clone();
@@ -168,7 +174,8 @@ fn handle_key(command_content: Vec<Value>, rdb_file: &mut RdbFile) -> Result<Val
         _ => Err(anyhow::anyhow!("Pattern error")),
     }
 }
-fn handle_info(command_content: Vec<Value>, replication: &mut Replication) -> Result<Value>{
+async fn handle_info(command_content: Vec<Value>, replication: Arc<Mutex<Replication>>) -> Result<Value>{
+    let replication = replication.lock().await;
     if let Some(arg) = command_content.get(0){
         let arg: String = unwrap_value_to_string(arg).unwrap();
         match arg.as_str(){
@@ -183,6 +190,8 @@ fn handle_info(command_content: Vec<Value>, replication: &mut Replication) -> Re
 fn handle_replconf() -> Result<Value> {
     Ok(Value::SimpleString("OK".to_string()))
 }
-fn handle_psync(replication: &mut Replication) -> Result<Value>{
+async fn handle_psync(replication: Arc<Mutex<Replication>>, handler: Arc<Mutex<RespHandler>>) -> Result<Value>{
+    let mut replication = replication.lock().await;
+    replication.add_repl_handler(handler).unwrap();
     Ok(Value::SimpleString(format!("FULLRESYNC {} 0", replication.get_master_replid().unwrap())))
 }
