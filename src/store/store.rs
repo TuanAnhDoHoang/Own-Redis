@@ -15,6 +15,7 @@ impl Store {
     }
 
     pub fn set_value(&mut self, key: String, value: String) -> Result<String>{
+        println!("LOG_FROM_set_value --- {}:{}", key, value);
         self.collections.insert(key, value);
         Ok(String::from("OK"))
     }
@@ -52,4 +53,13 @@ impl Store {
         self.collections.insert(key, value);
         Ok(String::from("OK"))
     }
+    // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
+    //     let mut result = Vec::new();
+    //     for (key, value) in self.collections.iter() {
+    //         result.push((key.clone(), value.clone()));
+    //     }
+    //     // self.px_collection.iter().map(|(key, value)| if result.push((key.clone(), value.clone())));
+    //     println!("LOG_FROM_store --- collection : {:?}", result);
+    //     Ok(result)
+    // }
 }

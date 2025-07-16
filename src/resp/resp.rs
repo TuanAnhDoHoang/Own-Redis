@@ -2,33 +2,36 @@ use crate::{resp::value::Value};
 use anyhow::Result;
 use std::usize;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    net::TcpStream
 };
-
+use std::sync::Arc;
+use tokio::sync::Mutex;
 #[derive(Debug)]
 pub struct RespHandler {
-    stream: TcpStream,
-    // buffer: BytesMut
-    buffer: [u8; 1024],
+    pub stream: Arc<Mutex<TcpStream>>,
+    pub buffer: [u8; 1024],
 }
 
 impl RespHandler {
-    pub fn new(stream: TcpStream) -> Self {
+    pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
         RespHandler {
             stream,
-            // buffer: BytesMut::with_capacity(1024),
             buffer: [0; 1024],
         }
     }
     pub async fn read_value(&mut self) -> Result<Option<Value>> {
-        let read_size: usize = self.stream.read(&mut self.buffer).await?;
+        self.buffer = [0;1024];
+
+        let mut stream = self.stream.lock().await;
+        let (mut reader, _) = stream.split();
+        let read_size: usize = reader.read(&mut self.buffer).await?;
+        println!("LOG_FROM_read_value: {}", String::from_utf8_lossy(&self.buffer));
 
         if read_size == 0 {
             return Ok(None);
         }
 
-        // println!("LOG_FROM_read_value -- buffer: {}", bytes_to_string(&self.buffer[..read_size]));
         match parse_payload(&self.buffer[..read_size]) {
             Ok((value, _)) => Ok(Some(value)),
             Err(e) => Err(anyhow::anyhow!(
@@ -38,38 +41,60 @@ impl RespHandler {
         }
     }
     pub async fn write_value(&mut self, payload: String) {
-        println!("LOG_FROM_write_value -- payload: {}", payload);
-        if self.stream.write_all(payload.as_bytes()).await.is_ok() {
-            self.stream.flush().await.expect("Failed to flush stream");
-            // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
-        } else {
-            println!("Failed to send response ");
-        }
-
-        if payload
-            == Value::serialize(&Value::SimpleString(format!(
-                "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"
-            )))
-        {
-            let empty_rdb_file = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
-            let rdb_bytes = hex::decode(empty_rdb_file).unwrap();
-            println!("LOG_FROM_write_value --- rdb_bytes: {:?}", rdb_bytes);
-            let header = format!("${}\r\n", rdb_bytes.len());
-            self.stream.write_all(header.as_bytes()).await.unwrap();
-            self.stream.write_all(&rdb_bytes).await.unwrap();
-            self.stream.flush().await.expect("Failed to flush stream");
+        // println!("LOG_FROM_write_value -- payload: {}", payload);
+        let mut stream = self.stream.lock().await;
+        let (_, mut writer) = stream.split(); 
+        match writer.write_all(payload.as_bytes()).await{
+            Ok(_) => {
+                writer.flush().await.expect("Failed to flush stream");
+            }
+            Err(e) => {
+                println!("Failed to send response : {}", e);
+            }
         }
     }
-
-    pub async fn write_multip_values(&mut self, payloads: Vec<Vec<u8>>) {
-        for payload in payloads {
-            self.stream.write_all(&payload).await.unwrap();
-        }
-        self.stream.flush().await.expect("Failed to flush stream");
+    pub async fn read_without_parse(&mut self) -> Result<([u8; 1024], usize)>{
+        self.buffer = [0;1024];
+        let mut stream = self.stream.lock().await;
+        let (mut reader, _) = stream.split();
+        let read_size: usize = reader.read(&mut self.buffer).await.unwrap();
+        println!("LOG_FROM_read_withou_parse: buffer: {:?}", &self.buffer[..read_size]);
+        Ok((self.buffer, read_size))
     }
 }
 
-fn parse_payload(payload: &[u8]) -> Result<(Value, usize)> {
+pub async fn read_value(reader: &mut ReadHalf<TcpStream>) -> Result<Option<Value>> {
+    let mut buffer: [u8; 1024] = [0;1024];
+    let read_size: usize = reader.read(&mut buffer).await?;
+
+    if read_size == 0 {
+        return Ok(None);
+    }
+
+    match parse_payload(&buffer[..read_size]) {
+        Ok((value, _)) => Ok(Some(value)),
+        Err(e) => Err(anyhow::anyhow!(
+            "Got Error when parse value from stream: {}",
+            e
+        )),
+    }
+}
+
+pub async fn write_value(writer: Arc<Mutex<WriteHalf<TcpStream>>>, payload: String) {
+    println!("LOG_FROM_write_value -- payload: {}", payload);
+    let mut writer = writer.lock().await;
+    match writer.write_all(payload.as_bytes()).await{
+        Ok(_) => {
+            writer.flush().await.expect("Failed to flush stream");
+        }
+        Err(e) => {
+            println!("Failed to send response : {}", e);
+        }
+        // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
+    }
+}
+
+pub fn parse_payload(payload: &[u8]) -> Result<(Value, usize)> {
     match payload[0] as char {
         '+' => parse_simple_string(payload),
         '$' => parse_bulk_string(payload),

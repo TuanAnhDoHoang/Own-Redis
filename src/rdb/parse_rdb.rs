@@ -18,14 +18,14 @@ impl<T: Into<String>> From<T> for Entry {
     }
 }
 impl Entry {
-    fn get(&self) -> Option<&String> {
-        if let Some(exp) = self.1 {
-            if exp < Utc::now() {
-                return None;
-            }
-        }
-        Some(&self.0)
-    }
+    // fn get(&self) -> Option<&String> {
+    //     if let Some(exp) = self.1 {
+    //         if exp < Utc::now() {
+    //             return None;
+    //         }
+    //     }
+    //     Some(&self.0)
+    // }
     fn with_exp(mut self, exp: Option<DateTime<Utc>>) -> Self {
         self.1 = exp;
         self

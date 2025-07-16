@@ -7,7 +7,8 @@ pub struct Argument{
     dir: String,
     db_file_name:String,
     port: usize,
-    master_endpoint: String
+    master_endpoint: String,
+    
 }
 impl Argument{
     pub fn new() -> Self{
@@ -54,7 +55,7 @@ impl Argument{
     }
 }
 
-pub fn flags_handler(flags: Vec<String>) -> Result<(Argument, RdbFile, Replication)> {
+pub fn flags_handler<'a>(flags: Vec<String>) -> Result<(Argument, RdbFile, Replication)> {
     let mut rdb_argument = Argument::new();
     let mut rdb_file = RdbFile::new();
     let mut replication = Replication::new();
@@ -83,7 +84,7 @@ pub fn flags_handler(flags: Vec<String>) -> Result<(Argument, RdbFile, Replicati
             },
             "--replicaof" => match flags.get(index+1) {
                 Some(master_endpoint) => {
-                    replication.set_role(Role::slave).expect("Error when set role in replication");
+                    replication.set_role(Role::Slave).expect("Error when set role in replication");
 
                     let mut m_endpoint = master_endpoint.split_whitespace();
                     let _ = rdb_argument.set_master_endpoint(
