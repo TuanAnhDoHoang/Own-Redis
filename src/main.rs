@@ -4,6 +4,7 @@ mod resp;
 mod store;
 
 use crate::command_handler::command_handler::handle_info;
+use crate::rdb::replication;
 use crate::resp::resp::read_without_parse;
 use crate::{
     command_handler::command_handler::command_handler, rdb::argument::flags_handler,
@@ -115,49 +116,54 @@ async fn main() {
             }
         });
         
-        sleep(Duration::from_millis(2600)).await;
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    //read client stream
-                    let (mut reader, mut writer) = split(stream);
-                    loop {
-                        match read_value(&mut reader).await {
-                            Ok(Some(response)) => {
-                                let (command, command_content) = extract_command(response).unwrap();
-                                let result = match command.as_str() {
-                                    "INFO" => handle_info(command_content, replication.clone())
-                                        .await
-                                        .expect("Error when handle KEY"),
-                                    "GET" => {
-                                        let key =
-                                            unwrap_value_to_string(command_content.get(0).unwrap())
-                                                .unwrap();
-                                        let storage = storage.lock().await;
+                    let replication = replication.clone();
+                    let storage = storage.clone();
+                    tokio::spawn( async move{
+                        //read client stream
+                        let (mut reader, mut writer) = split(stream);
+                        let replication = replication.clone();
+                        let storage = storage.clone();
+                        loop {
+                            match read_value(&mut reader).await {
+                                Ok(Some(response)) => {
+                                    let (command, command_content) = extract_command(response).unwrap();
+                                    let result = match command.as_str() {
+                                        "INFO" => handle_info(command_content, replication.clone())
+                                            .await
+                                            .expect("Error when handle KEY"),
+                                        "GET" => {
+                                            let key =
+                                                unwrap_value_to_string(command_content.get(0).unwrap())
+                                                    .unwrap();
+                                            let storage = storage.lock().await;
 
-                                        let mut value = Value::NullBulkString;
-                                        for _ in 1..50{
-                                            if let Ok(get_value) = storage.get_value(key.clone()){
-                                                value = Value::BulkString(get_value);
-                                                break;
+                                            let mut value = Value::NullBulkString;
+                                            for _ in 1..50{
+                                                if let Ok(get_value) = storage.get_value(key.clone()){
+                                                    value = Value::BulkString(get_value);
+                                                    break;
+                                                }
                                             }
+                                            if value == Value::NullBulkString {panic!("Fail get value of key {}", key)} else{ value }
                                         }
-                                        if value == Value::NullBulkString {panic!("Fail get value of key {}", key)} else{ value }
-                                    }
-                                    _ => Value::NullBulkString,
-                                };
-                                writer
-                                    .write_all(result.serialize().as_bytes())
-                                    .await
-                                    .unwrap();
+                                        _ => Value::NullBulkString,
+                                    };
+                                    writer
+                                        .write_all(result.serialize().as_bytes())
+                                        .await
+                                        .unwrap();
+                                }
+                                Ok(None) => {
+                                    println!("Got nothing from client");
+                                    break;
+                                }
+                                Err(e) => println!("Got error from slave: {}", e),
                             }
-                            Ok(None) => {
-                                println!("Got nothing from client");
-                                break;
-                            }
-                            Err(e) => println!("Got error from slave: {}", e),
                         }
-                    }
+                    });
                 }
                 Err(e) => println!("Connection error: {}", e),
             }
