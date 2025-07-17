@@ -114,13 +114,14 @@ async fn main() {
                 }
             }
         });
+        
+        sleep(Duration::from_millis(3000)).await;
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     //read client stream
                     let (mut reader, mut writer) = split(stream);
                     loop {
-                        sleep(Duration::from_millis(1000)).await;
                         match read_value(&mut reader).await {
                             Ok(Some(response)) => {
                                 let (command, command_content) = extract_command(response).unwrap();
