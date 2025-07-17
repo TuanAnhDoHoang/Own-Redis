@@ -115,7 +115,7 @@ async fn main() {
             }
         });
         
-        sleep(Duration::from_millis(2000)).await;
+        sleep(Duration::from_millis(2600)).await;
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
