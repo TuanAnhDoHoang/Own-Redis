@@ -120,7 +120,7 @@ async fn main() {
                     //read client stream
                     let (mut reader, mut writer) = split(stream);
                     loop {
-                        sleep(Duration::from_millis(2000)).await;
+                        sleep(Duration::from_millis(3000)).await;
                         match read_value(&mut reader).await {
                             Ok(Some(response)) => {
                                 let (command, command_content) = extract_command(response).unwrap();
