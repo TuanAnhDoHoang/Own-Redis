@@ -7,66 +7,71 @@ use tokio::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
-#[derive(Debug)]
-pub struct RespHandler {
-    pub stream: Arc<Mutex<TcpStream>>,
-    pub buffer: [u8; 1024],
+// #[derive(Debug)]
+// pub struct RespHandler {
+//     pub stream: Arc<Mutex<TcpStream>>,
+//     pub buffer: [u8; 1024],
+// }
+
+// impl RespHandler {
+//     pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
+//         RespHandler {
+//             stream,
+//             buffer: [0; 1024],
+//         }
+//     }
+//     pub async fn read_value(&mut self) -> Result<Option<Value>> {
+//         self.buffer = [0;1024];
+
+//         let mut stream = self.stream.lock().await;
+//         let (mut reader, _) = stream.split();
+//         let read_size: usize = reader.read(&mut self.buffer).await?;
+//         println!("LOG_FROM_read_value: {}", String::from_utf8_lossy(&self.buffer));
+
+//         if read_size == 0 {
+//             return Ok(None);
+//         }
+
+//         match parse_payload(&self.buffer[..read_size]) {
+//             Ok((value, _)) => Ok(Some(value)),
+//             Err(e) => Err(anyhow::anyhow!(
+//                 "Got Error when parse value from stream: {}",
+//                 e
+//             )),
+//         }
+//     }
+//     pub async fn write_value(&mut self, payload: String) {
+//         // println!("LOG_FROM_write_value -- payload: {}", payload);
+//         let mut stream = self.stream.lock().await;
+//         let (_, mut writer) = stream.split(); 
+//         match writer.write_all(payload.as_bytes()).await{
+//             Ok(_) => {
+//                 writer.flush().await.expect("Failed to flush stream");
+//             }
+//             Err(e) => {
+//                 println!("Failed to send response : {}", e);
+//             }
+//         }
+//     }
+//     pub async fn read_without_parse(&mut self) -> Result<([u8; 1024], usize)>{
+//         self.buffer = [0;1024];
+//         let mut stream = self.stream.lock().await;
+//         let (mut reader, _) = stream.split();
+//         let read_size: usize = reader.read(&mut self.buffer).await.unwrap();
+//         // println!("LOG_FROM_read_withou_parse: buffer: {:?}", &self.buffer[..read_size]);
+//         Ok((self.buffer, read_size))
+//     }
+// }
+
+pub async fn read_without_parse(reader: &mut ReadHalf<TcpStream>) -> Result<([u8; 1024], usize)>{
+    let mut buffer: [u8; 1024] = [0;1024];
+    let read_size: usize = reader.read(&mut buffer).await.unwrap();
+    Ok((buffer, read_size))
 }
-
-impl RespHandler {
-    pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
-        RespHandler {
-            stream,
-            buffer: [0; 1024],
-        }
-    }
-    pub async fn read_value(&mut self) -> Result<Option<Value>> {
-        self.buffer = [0;1024];
-
-        let mut stream = self.stream.lock().await;
-        let (mut reader, _) = stream.split();
-        let read_size: usize = reader.read(&mut self.buffer).await?;
-        println!("LOG_FROM_read_value: {}", String::from_utf8_lossy(&self.buffer));
-
-        if read_size == 0 {
-            return Ok(None);
-        }
-
-        match parse_payload(&self.buffer[..read_size]) {
-            Ok((value, _)) => Ok(Some(value)),
-            Err(e) => Err(anyhow::anyhow!(
-                "Got Error when parse value from stream: {}",
-                e
-            )),
-        }
-    }
-    pub async fn write_value(&mut self, payload: String) {
-        // println!("LOG_FROM_write_value -- payload: {}", payload);
-        let mut stream = self.stream.lock().await;
-        let (_, mut writer) = stream.split(); 
-        match writer.write_all(payload.as_bytes()).await{
-            Ok(_) => {
-                writer.flush().await.expect("Failed to flush stream");
-            }
-            Err(e) => {
-                println!("Failed to send response : {}", e);
-            }
-        }
-    }
-    pub async fn read_without_parse(&mut self) -> Result<([u8; 1024], usize)>{
-        self.buffer = [0;1024];
-        let mut stream = self.stream.lock().await;
-        let (mut reader, _) = stream.split();
-        let read_size: usize = reader.read(&mut self.buffer).await.unwrap();
-        println!("LOG_FROM_read_withou_parse: buffer: {:?}", &self.buffer[..read_size]);
-        Ok((self.buffer, read_size))
-    }
-}
-
 pub async fn read_value(reader: &mut ReadHalf<TcpStream>) -> Result<Option<Value>> {
     let mut buffer: [u8; 1024] = [0;1024];
     let read_size: usize = reader.read(&mut buffer).await?;
-
+    println!("LOG_FROM_read_value buff:{}", String::from_utf8_lossy(&buffer[..read_size]));
     if read_size == 0 {
         return Ok(None);
     }

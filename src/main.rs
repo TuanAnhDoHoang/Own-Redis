@@ -3,64 +3,29 @@ mod rdb;
 mod resp;
 mod store;
 
+use crate::command_handler::command_handler::handle_info;
+use crate::resp::resp::read_without_parse;
 use crate::{
-    command_handler::command_handler::command_handler,
-    rdb::argument::{flags_handler, Argument},
-    resp::resp::unwrap_value_to_string,
-    store::store::Store,
+    command_handler::command_handler::command_handler, rdb::argument::flags_handler,
+    resp::resp::unwrap_value_to_string, store::store::Store,
 };
 use resp::resp::{read_value, write_value};
-use resp::{
-    resp::{extract_command, RespHandler},
-    value::Value,
-};
+use resp::{resp::extract_command, value::Value};
 use std::env::args;
 use std::sync::Arc;
+use std::thread::sleep;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::{
     io::{split, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
-async fn connect_to_master(rdb_argument: &mut Argument, handler: Arc<Mutex<RespHandler>>) {
-    let payload_step_1: String =
-        Value::serialize(&Value::Array(vec![Value::BulkString("PING".to_string())]));
-    let payload_step_2_once: String = Value::serialize(&Value::Array(vec![
-        Value::BulkString("REPLCONF".to_string()),
-        Value::BulkString("listening-port".to_string()),
-        Value::BulkString(format!("{}", rdb_argument.get_port().unwrap())),
-    ]));
-    let payload_step_2_twice: String = Value::serialize(&Value::Array(vec![
-        Value::BulkString("REPLCONF".to_string()),
-        Value::BulkString("capa".to_string()),
-        Value::BulkString("psync2".to_string()),
-    ]));
-
-    let payload_step_3: String = Value::serialize(&Value::Array(vec![
-        Value::BulkString("PSYNC".to_string()),
-        Value::BulkString("?".to_string()),
-        Value::BulkString("-1".to_string()),
-    ]));
-
-    let payloads = vec![
-        payload_step_1,
-        payload_step_2_once,
-        payload_step_2_twice,
-        payload_step_3,
-    ];
-    let mut handler = handler.lock().await;
-    for payload in payloads {
-        handler.write_value(payload).await;
-        handler.read_without_parse().await.unwrap();
-        // println!("Response from master : {}", Value::serialize(&value));
-    }
-    handler.read_without_parse().await.unwrap();
-}
 #[tokio::main]
 async fn main() {
     let args = args().collect::<Vec<String>>();
 
-    let (mut rdb_argument, mut rdb_file, replication) =
+    let (rdb_argument, rdb_file, replication) =
         flags_handler(args.into_iter().skip(1).collect()).unwrap();
     let replication = Arc::new(Mutex::new(replication));
 
@@ -71,13 +36,39 @@ async fn main() {
         let stream_to_master = TcpStream::connect(format!("{}:{}", master_address, master_port))
             .await
             .unwrap();
-        let stream_to_master = Arc::new(Mutex::new(stream_to_master));
-        let to_master_handler = Arc::new(Mutex::new(RespHandler::new(stream_to_master)));
-        connect_to_master(&mut rdb_argument, to_master_handler.clone()).await;
+        let (mut master_reader, mut master_writer) = split(stream_to_master);
 
-        println!("Done hand sakes to master");
-        let handler = to_master_handler.clone();
-        let mut storage = Store::new();
+        //=====================Hand sake=========================//
+        let payload_step_1: String =
+            Value::serialize(&Value::Array(vec![Value::BulkString("PING".to_string())]));
+        let payload_step_2_once: String = Value::serialize(&Value::Array(vec![
+            Value::BulkString("REPLCONF".to_string()),
+            Value::BulkString("listening-port".to_string()),
+            Value::BulkString(format!("{}", rdb_argument.get_port().unwrap())),
+        ]));
+        let payload_step_2_twice: String = Value::serialize(&Value::Array(vec![
+            Value::BulkString("REPLCONF".to_string()),
+            Value::BulkString("capa".to_string()),
+            Value::BulkString("psync2".to_string()),
+        ]));
+
+        let payload_step_3: String = Value::serialize(&Value::Array(vec![
+            Value::BulkString("PSYNC".to_string()),
+            Value::BulkString("?".to_string()),
+            Value::BulkString("-1".to_string()),
+        ]));
+
+        let payloads = vec![
+            payload_step_1,
+            payload_step_2_once,
+            payload_step_2_twice,
+            payload_step_3,
+        ];
+        for payload in payloads {
+            master_writer.write_all(payload.as_bytes()).await.unwrap();
+            read_value(&mut master_reader).await.unwrap();
+        }
+        //======================End handsake====================================//
 
         //listenning new connections
         let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))
@@ -86,82 +77,82 @@ async fn main() {
                 eprintln!("Failed to bind to address: {}", e);
                 std::process::exit(1);
             });
+        //reciev table empty file
+        read_without_parse(&mut master_reader).await.unwrap();
 
-        //for new thread
-        let rdb_argument_clone = rdb_argument.clone();
-        let rdb_file_clone = rdb_file.clone();
-        let replication_clone = replication.clone();
-        // tokio::spawn(async move {
-        //     let mut rdb_argument = rdb_argument_clone.clone();
-        //     let mut rdb_file = rdb_file_clone.clone();
-        //     let replication = replication_clone.clone();
-        //     let mut storage = Store::new();
+        let storage = Arc::new(Mutex::new(Store::new()));
+
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            //read master stream
             loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => {
-                        let (mut reader, mut writer) = split(stream);
-                        loop {
-                            match read_value(&mut reader).await {
-                                Ok(Some(response)) => {
-                                    let (command, command_content) =
-                                        extract_command(response).unwrap();
-                                    let result = command_handler(
-                                        command.clone(),
-                                        command_content.clone(),
-                                        &mut storage,
-                                        &mut rdb_argument,
-                                        &mut rdb_file,
-                                        replication.clone(),
-                                    )
-                                    .await;
-                                    writer
-                                        .write_all(result.serialize().as_bytes())
-                                        .await
-                                        .unwrap();
-                                }
-                                Ok(None) => {
-                                    println!("Got nothing from client");
-                                    break;
-                                }
-                                Err(e) => println!("Got error from slave: {}", e),
+                match read_value(&mut master_reader).await {
+                    Ok(Some(response)) => {
+                        let (command, command_content) = extract_command(response).unwrap();
+                        match command.as_str() {
+                            "SET" => {
+                                let key = unwrap_value_to_string(&command_content[0])
+                                    .unwrap();
+                                let value = unwrap_value_to_string(&command_content[1])
+                                    .unwrap();
+
+                                let mut storage = storage_clone.lock().await;
+                                storage.set_value(key, value).unwrap();
                             }
-                        }
+                            _ => println!("error command to slave from master: {}", command),
+                        };
                     }
-                    Err(e) => println!("Connection error: {}", e),
+                    Ok(None) => {
+                        println!("Got nothing from master");
+                        break;
+                    }
+                    Err(e) => {
+                        print!("Got error when read value : {}", e);
+                        break;
+                    }
                 }
             }
-        // });
-        // tokio::spawn(async move {
-        //     loop {
-        //         let mut handler_mutex_guard = handler.lock().await;
-        //         match handler_mutex_guard.read_value().await {
-        //             Ok(Some(response)) => {
-        //                 let (command, command_content) = extract_command(response).unwrap();
-        //                 let result = command_handler(
-        //                     command.clone(),
-        //                     command_content.clone(),
-        //                     &mut storage,
-        //                     &mut rdb_argument,
-        //                     &mut rdb_file,
-        //                     replication.clone(),
-        //                 )
-        //                 .await;
-        //                 handler_mutex_guard
-        //                     .write_value(Value::serialize(&result))
-        //                     .await;
-        //             }
-        //             Ok(None) => {
-        //                 println!("Got nothing from master");
-        //                 break;
-        //             }
-        //             Err(e) => {
-        //                 print!("Got error when read value : {}", e);
-        //                 break;
-        //             }
-        //         }
-        //     }
-        // });
-        //save master connection
+        });
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    //read client stream
+                    let (mut reader, mut writer) = split(stream);
+                    loop {
+                        sleep(Duration::from_millis(1000));
+                        match read_value(&mut reader).await {
+                            Ok(Some(response)) => {
+                                let (command, command_content) = extract_command(response).unwrap();
+                                let result = match command.as_str() {
+                                    "INFO" => handle_info(command_content, replication.clone())
+                                        .await
+                                        .expect("Error when handle KEY"),
+                                    "GET" => {
+                                        let key =
+                                            unwrap_value_to_string(command_content.get(0).unwrap())
+                                                .unwrap();
+                                        let storage = storage.lock().await;
+                                        let value = storage.get_value(key).unwrap();
+                                        Value::BulkString(value)
+                                    }
+                                    _ => Value::NullBulkString,
+                                };
+                                writer
+                                    .write_all(result.serialize().as_bytes())
+                                    .await
+                                    .unwrap();
+                            }
+                            Ok(None) => {
+                                println!("Got nothing from client");
+                                break;
+                            }
+                            Err(e) => println!("Got error from slave: {}", e),
+                        }
+                    }
+                }
+                Err(e) => println!("Connection error: {}", e),
+            }
+        }
     } else {
         //master side
         let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))
