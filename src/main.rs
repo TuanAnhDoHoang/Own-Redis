@@ -11,9 +11,10 @@ use crate::{
 };
 use resp::resp::{read_value, write_value};
 use resp::{resp::extract_command, value::Value};
+use tokio::time::sleep;
+use core::panic;
 use std::env::args;
 use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::{
@@ -119,7 +120,7 @@ async fn main() {
                     //read client stream
                     let (mut reader, mut writer) = split(stream);
                     loop {
-                        sleep(Duration::from_millis(2000));
+                        sleep(Duration::from_millis(1000)).await;
                         match read_value(&mut reader).await {
                             Ok(Some(response)) => {
                                 let (command, command_content) = extract_command(response).unwrap();
@@ -132,8 +133,15 @@ async fn main() {
                                             unwrap_value_to_string(command_content.get(0).unwrap())
                                                 .unwrap();
                                         let storage = storage.lock().await;
-                                        let value = storage.get_value(key).unwrap();
-                                        Value::BulkString(value)
+
+                                        let mut value = Value::NullBulkString;
+                                        for _ in 1..50{
+                                            if let Ok(get_value) = storage.get_value(key.clone()){
+                                                value = Value::BulkString(get_value);
+                                                break;
+                                            }
+                                        }
+                                        if value == Value::NullBulkString {panic!("Fail get value of key {}", key)} else{ value }
                                     }
                                     _ => Value::NullBulkString,
                                 };
