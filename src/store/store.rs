@@ -1,17 +1,44 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 
 #[derive(Clone)]
+pub struct StreamType{
+    stream_id: String,
+    collection: HashMap<String, String>
+}
+impl StreamType{
+    pub fn new() -> Self{
+        StreamType { stream_id: String::new(), collection: HashMap::new() }
+    }
+    pub fn new_with_stream_id(stream_id: &str) -> Self{
+        StreamType { stream_id: stream_id.to_string(), collection: HashMap::new() }
+    }
+    pub fn get_stream_id(&self) -> Result<String>{
+        Ok(self.stream_id.clone())
+    }
+    pub fn set_stream_id(&mut self, stream_id: &str) -> Result<()>{
+        self.stream_id = stream_id.to_string();
+        Ok(())
+    }
+    pub fn add_to_collection(&mut self, key: &str, value: &str) -> Result<()>{
+        self.collection.insert(key.to_string(), value.to_string());
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 pub struct Store {
     collections: HashMap<String, String>,
-    px_collection: HashMap<String, DateTime<Utc>>
+    px_collection: HashMap<String, DateTime<Utc>>,
+    stream_collections: HashMap<String, StreamType>
 }
 impl Store {
     pub fn new() -> Self {
         Store {
             collections: HashMap::new(),
-            px_collection: HashMap::new()
+            px_collection: HashMap::new(),
+            stream_collections: HashMap::new()
         }
     }
 
@@ -63,4 +90,12 @@ impl Store {
     //     println!("LOG_FROM_store --- collection : {:?}", result);
     //     Ok(result)
     // }
+
+    pub fn get_stream_by_key(&mut self, stream_key: &str) -> Option<&mut StreamType> {
+        self.stream_collections.get_mut(stream_key)
+    }
+    pub fn add_stream(&mut self, stream_key: &str, stream: StreamType) -> Result<()>{
+        self.stream_collections.insert(stream_key.to_string(), stream);
+        Ok(())
+    }
 }

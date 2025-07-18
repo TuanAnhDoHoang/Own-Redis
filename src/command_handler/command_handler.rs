@@ -1,9 +1,10 @@
 use crate::rdb::parse_rdb::RdbFile;
 use crate::rdb::argument::Argument;
 use crate::rdb::replication::{Replication};
+use crate::store::store::StreamType;
 use crate::unwrap_value_to_string;
 use crate::{resp::value::Value, store::store::Store};
-use anyhow::Result;
+use anyhow::{Result};
 use std::collections::HashMap;
 use tokio::sync::{Mutex};
 use std::sync::{Arc};
@@ -31,6 +32,7 @@ pub async fn command_handler (
         "REPLCONF" => handle_replconf().expect("Error when handle replconf"),
         "PSYNC" => handle_psync(replication).await.expect("Error when handle psync"),
         "TYPE" => handle_type(command_content, storage).expect("Error when handle type"),
+        "XADD" => handle_xadd(command_content, storage).expect("Error when handle xadd"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -195,15 +197,38 @@ pub async fn handle_psync(replication: Arc<Mutex<Replication>>) -> Result<Value>
 }
 pub fn handle_type(command_content: Vec<Value>, storage: &mut Store) -> Result<Value>{
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    match storage.get_value(key.clone()){
-        Ok(_) => {
-            Ok(Value::SimpleString("string".to_string()))
-        },
-        Err(e) => {
-            // Err(anyhow::anyhow!("Can not get key {} - error {}", key, e))
-            eprintln!("Error when get value of {} -- error {}", key, e);
-            Ok(Value::SimpleString("none".to_string()))
-        }
-    }
 
+    let key_type: &str = match storage.get_stream_by_key(&key){
+        Some(_) => "stream",
+        None => {
+            match storage.get_value(key.clone()){
+                Ok(_) => "string",
+                Err(e) => {
+                    // Err(anyhow::anyhow!("Can not get key {} - error {}", key, e))
+                    eprintln!("Error when get value of {} -- error {}", key, e);
+                    "none"
+                }
+            }
+        }
+    };
+    Ok(Value::SimpleString(key_type.to_string()))
+}
+
+
+pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+    let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let stream_id = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let stream = if let Some(stream) = storage.get_stream_by_key(&stream_key){ stream } else{
+        storage.add_stream(&stream_key, StreamType::new_with_stream_id(&stream_id)).unwrap();
+        storage.get_stream_by_key(&stream_key).unwrap()
+    };
+
+    let mut index = 2;
+    while index < command_content.len(){
+        let key = unwrap_value_to_string(command_content.get(index).unwrap()).unwrap();
+        let value = unwrap_value_to_string(command_content.get(index + 1).unwrap()).unwrap();
+        stream.add_to_collection(&key, &value).unwrap();
+        index += 2;
+    }
+    Ok(Value::BulkString(stream_id.to_string()))
 }
