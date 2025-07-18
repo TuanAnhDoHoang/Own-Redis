@@ -12,10 +12,10 @@ use crate::{
 use core::panic;
 use resp::resp::{read_value, write_value};
 use resp::{resp::extract_command, value::Value};
-use tokio::io::AsyncReadExt;
 use std::env::args;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio::{
@@ -87,18 +87,14 @@ async fn main() {
 
         tokio::spawn(async move {
             let mut buffer: [u8; 1024] = [0; 1024];
-            //read master stream
             loop {
                 master_reader.read(&mut buffer).await.unwrap();
-                // println!("read size: {} end", String::from_utf8_lossy(&buffer[..read_size]));
                 let mut asize = 0;
                 let mut last = 0;
 
                 for i in 0..buffer.len() {
                     if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
-                        asize = String::from_utf8_lossy(&buffer[1..i - 1])
-                            .parse()
-                            .unwrap();
+                        asize = String::from_utf8_lossy(&buffer[1..i - 1]).parse().unwrap();
                         last = i + 1;
                         break;
                     }
@@ -106,11 +102,10 @@ async fn main() {
 
                 let mut result: Vec<String> = Vec::new();
 
-                loop {
+                for _ in 0..asize {
                     let mut len_next_command = 0;
                     for i in last..buffer.len() {
                         if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
-                            // println!("{:?}", buffer[..i].to_ascii_lowercase());
                             len_next_command = String::from_utf8_lossy(&buffer[last + 1..i - 1])
                                 .parse()
                                 .unwrap();
@@ -122,26 +117,23 @@ async fn main() {
                         String::from_utf8_lossy(&buffer[last..last + len_next_command]).to_string(),
                     );
                     last = last + len_next_command + 2;
-                    if result.len() == asize{
-                        break;
-                    }
                 }
-                // if result[0] == "SET"{
-                    storage_clone.lock().await.set_value(result[1].clone(), result[2].clone()).unwrap();
-                    // println!("setted {}:{}", result[1], result[2]);
-                // }
+                storage_clone
+                    .lock()
+                    .await
+                    .set_value(result[1].clone(), result[2].clone())
+                    .unwrap();
             }
         });
-        // tokio::spawn( async move {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     //read client stream
                     let (mut reader, mut writer) = split(stream);
                     loop {
-                        sleep(Duration::from_millis(200)).await;
                         match read_value(&mut reader).await {
                             Ok(Some(response)) => {
+                                // sleep(Duration::from_millis(2000)).await;
                                 let (command, command_content) = extract_command(response).unwrap();
                                 let result = match command.as_str() {
                                     "INFO" => handle_info(command_content, replication.clone())
@@ -184,7 +176,6 @@ async fn main() {
                 Err(e) => println!("Connection error: {}", e),
             }
         }
-        // });
     } else {
         //master side
         let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))

@@ -71,10 +71,10 @@ pub async fn read_without_parse(reader: &mut ReadHalf<TcpStream>) -> Result<([u8
 pub async fn read_value(reader: &mut ReadHalf<TcpStream>) -> Result<Option<Value>> {
     let mut buffer: [u8; 1024] = [0; 1024];
     let read_size: usize = reader.read(&mut buffer).await?;
-    println!(
-        "LOG_FROM_read_value buff:{}",
-        String::from_utf8_lossy(&buffer[..read_size])
-    );
+    // println!(
+    //     "LOG_FROM_read_value buff:{}",
+    //     String::from_utf8_lossy(&buffer[..read_size])
+    // );
     if read_size == 0 {
         return Ok(None);
     }
