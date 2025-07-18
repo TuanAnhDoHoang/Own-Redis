@@ -1,12 +1,12 @@
-use crate::{resp::value::Value};
+use crate::resp::value::Value;
 use anyhow::Result;
+use std::sync::Arc;
 use std::usize;
+use tokio::sync::Mutex;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
-    net::TcpStream
+    net::TcpStream,
 };
-use std::sync::Arc;
-use tokio::sync::Mutex;
 // #[derive(Debug)]
 // pub struct RespHandler {
 //     pub stream: Arc<Mutex<TcpStream>>,
@@ -43,7 +43,7 @@ use tokio::sync::Mutex;
 //     pub async fn write_value(&mut self, payload: String) {
 //         // println!("LOG_FROM_write_value -- payload: {}", payload);
 //         let mut stream = self.stream.lock().await;
-//         let (_, mut writer) = stream.split(); 
+//         let (_, mut writer) = stream.split();
 //         match writer.write_all(payload.as_bytes()).await{
 //             Ok(_) => {
 //                 writer.flush().await.expect("Failed to flush stream");
@@ -63,15 +63,18 @@ use tokio::sync::Mutex;
 //     }
 // }
 
-pub async fn read_without_parse(reader: &mut ReadHalf<TcpStream>) -> Result<([u8; 1024], usize)>{
-    let mut buffer: [u8; 1024] = [0;1024];
+pub async fn read_without_parse(reader: &mut ReadHalf<TcpStream>) -> Result<([u8; 1024], usize)> {
+    let mut buffer: [u8; 1024] = [0; 1024];
     let read_size: usize = reader.read(&mut buffer).await.unwrap();
     Ok((buffer, read_size))
 }
 pub async fn read_value(reader: &mut ReadHalf<TcpStream>) -> Result<Option<Value>> {
-    let mut buffer: [u8; 1024] = [0;1024];
+    let mut buffer: [u8; 1024] = [0; 1024];
     let read_size: usize = reader.read(&mut buffer).await?;
-    println!("LOG_FROM_read_value buff:{}", String::from_utf8_lossy(&buffer[..read_size]));
+    println!(
+        "LOG_FROM_read_value buff:{}",
+        String::from_utf8_lossy(&buffer[..read_size])
+    );
     if read_size == 0 {
         return Ok(None);
     }
@@ -84,18 +87,52 @@ pub async fn read_value(reader: &mut ReadHalf<TcpStream>) -> Result<Option<Value
         )),
     }
 }
+pub async fn read_value_native(reader: &mut ReadHalf<TcpStream>) -> Result<()> {
+    //array format : *1\r\n$3\r\nSET\r\n$6\r\nanhdoo\r\n$6\r\nrustea\r\n
+    let mut buffer: [u8; 1024] = [0; 1024];
+    reader.read(&mut buffer).await?;
+    
+    let mut last = 0;
+    for i in 0..buffer.len() {
+        if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
+            last = i + 1;
+            break;
+        }
+    }
+
+    let mut result: Vec<String> = Vec::new();
+
+    while last < buffer.len() {
+        println!("last: {}", last);
+        let mut len_next_command = 0;
+        for i in last..buffer.len() {
+            if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
+                len_next_command = String::from_utf8_lossy(&buffer[last + 1..i - 1])
+                    .parse()
+                    .unwrap();
+                last = i + 1;
+                break;
+            }
+        }
+        result.push(String::from_utf8_lossy(&buffer[last..last + len_next_command]).to_string());
+        last = last + len_next_command + 2;
+        if buffer[last] == b'\0'{
+            break;
+        }
+    }
+    Ok(())
+}
 
 pub async fn write_value(writer: Arc<Mutex<WriteHalf<TcpStream>>>, payload: String) {
     println!("LOG_FROM_write_value -- payload: {}", payload);
     let mut writer = writer.lock().await;
-    match writer.write_all(payload.as_bytes()).await{
+    match writer.write_all(payload.as_bytes()).await {
         Ok(_) => {
             writer.flush().await.expect("Failed to flush stream");
         }
         Err(e) => {
             println!("Failed to send response : {}", e);
-        }
-        // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
+        } // println!("Sent to {:?}: {}", addr, payload.trim_end_matches("\r\n"));
     }
 }
 
@@ -149,9 +186,7 @@ fn parse_bulk_string(payload: &[u8]) -> Result<(Value, usize)> {
 }
 
 fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
-    // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
     let (array_size, last) = read_until_crlf(&payload[1..]).unwrap();
-    // println!("LOG_FROM_parse_array --- array_size: {} and last: {}", bytes_to_string(array_size), last);
     let array_size: usize = String::from_utf8_lossy(array_size)
         .trim()
         .to_string()
@@ -162,9 +197,6 @@ fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
     for _ in 0..array_size {
         match parse_payload(&payload[start..]) {
             Ok((buffer, buf_size)) => {
-                // println!("LOG_FROM_parse_array buffer: {}", unwrap_value_to_string(&buffer).unwrap());
-                // println!("LOG_FROM_parse_array --- payload[{}..]: {:?}", start, bytes_to_string(&payload[start..]));
-                //re-calculation start value
                 let format_prev_bulk_string = format!(
                     "${}\r\n{}\r\n",
                     buf_size,
@@ -177,11 +209,11 @@ fn parse_array(payload: &[u8]) -> Result<(Value, usize)> {
             Err(e) => return Err(anyhow::anyhow!("Got error when parse inside array: {}", e)),
         }
     }
-    if array_parsed.len() == array_size {
-        return Ok((Value::Array(array_parsed), array_size));
-    }
+    // if array_parsed.len() == array_size {
+    return Ok((Value::Array(array_parsed), array_size));
+    // }
 
-    Err(anyhow::anyhow!("Mismatch array lenght: {:#?}", payload))
+    // Err(anyhow::anyhow!("Mismatch array lenght: {:#?}", payload))
 }
 
 //Read until \r\n

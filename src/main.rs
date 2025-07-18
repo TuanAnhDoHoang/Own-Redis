@@ -4,20 +4,20 @@ mod resp;
 mod store;
 
 use crate::command_handler::command_handler::handle_info;
-use crate::rdb::replication;
-use crate::resp::resp::read_without_parse;
+use crate::resp::resp::{read_value_native, read_without_parse};
 use crate::{
     command_handler::command_handler::command_handler, rdb::argument::flags_handler,
     resp::resp::unwrap_value_to_string, store::store::Store,
 };
+use core::panic;
 use resp::resp::{read_value, write_value};
 use resp::{resp::extract_command, value::Value};
-use tokio::time::sleep;
-use core::panic;
+use tokio::io::AsyncReadExt;
 use std::env::args;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tokio::{
     io::{split, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -33,7 +33,17 @@ async fn main() {
 
     let (master_address, master_port) = rdb_argument.get_master_endpoint().unwrap();
 
+    let storage = Arc::new(Mutex::new(Store::new()));
+
+    let storage_clone = storage.clone();
     if master_port != 0 {
+        //listenning new connections
+        let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to bind to address: {}", e);
+                std::process::exit(1);
+            });
         //slave side
         let stream_to_master = TcpStream::connect(format!("{}:{}", master_address, master_port))
             .await
@@ -68,106 +78,113 @@ async fn main() {
         ];
         for payload in payloads {
             master_writer.write_all(payload.as_bytes()).await.unwrap();
-            read_value(&mut master_reader).await.unwrap();
+            read_without_parse(&mut master_reader).await.unwrap();
         }
         //======================End handsake====================================//
 
-        //listenning new connections
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to bind to address: {}", e);
-                std::process::exit(1);
-            });
         //reciev table empty file
         read_without_parse(&mut master_reader).await.unwrap();
 
-        let storage = Arc::new(Mutex::new(Store::new()));
-
-        let storage_clone = storage.clone();
         tokio::spawn(async move {
+            let mut buffer: [u8; 1024] = [0; 1024];
             //read master stream
             loop {
-                match read_value(&mut master_reader).await {
-                    Ok(Some(response)) => {
-                        let (command, command_content) = extract_command(response).unwrap();
-                        match command.as_str() {
-                            "SET" => {
-                                let key = unwrap_value_to_string(&command_content[0])
-                                    .unwrap();
-                                let value = unwrap_value_to_string(&command_content[1])
-                                    .unwrap();
+                master_reader.read(&mut buffer).await.unwrap();
+                // println!("read size: {} end", String::from_utf8_lossy(&buffer[..read_size]));
+                let mut asize = 0;
+                let mut last = 0;
 
-                                let mut storage = storage_clone.lock().await;
-                                storage.set_value(key, value).unwrap();
-                            }
-                            _ => println!("error command to slave from master: {}", command),
-                        };
-                    }
-                    Ok(None) => {
-                        println!("Got nothing from master");
-                        break;
-                    }
-                    Err(e) => {
-                        print!("Got error when read value : {}", e);
+                for i in 0..buffer.len() {
+                    if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
+                        asize = String::from_utf8_lossy(&buffer[1..i - 1])
+                            .parse()
+                            .unwrap();
+                        last = i + 1;
                         break;
                     }
                 }
+
+                let mut result: Vec<String> = Vec::new();
+
+                loop {
+                    let mut len_next_command = 0;
+                    for i in last..buffer.len() {
+                        if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
+                            // println!("{:?}", buffer[..i].to_ascii_lowercase());
+                            len_next_command = String::from_utf8_lossy(&buffer[last + 1..i - 1])
+                                .parse()
+                                .unwrap();
+                            last = i + 1;
+                            break;
+                        }
+                    }
+                    result.push(
+                        String::from_utf8_lossy(&buffer[last..last + len_next_command]).to_string(),
+                    );
+                    last = last + len_next_command + 2;
+                    if result.len() == asize{
+                        break;
+                    }
+                }
+                // if result[0] == "SET"{
+                    storage_clone.lock().await.set_value(result[1].clone(), result[2].clone()).unwrap();
+                    // println!("setted {}:{}", result[1], result[2]);
+                // }
             }
         });
-        
+        // tokio::spawn( async move {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    let replication = replication.clone();
-                    let storage = storage.clone();
-                    tokio::spawn( async move{
-                        //read client stream
-                        let (mut reader, mut writer) = split(stream);
-                        let replication = replication.clone();
-                        let storage = storage.clone();
-                        loop {
-                            match read_value(&mut reader).await {
-                                Ok(Some(response)) => {
-                                    let (command, command_content) = extract_command(response).unwrap();
-                                    let result = match command.as_str() {
-                                        "INFO" => handle_info(command_content, replication.clone())
-                                            .await
-                                            .expect("Error when handle KEY"),
-                                        "GET" => {
-                                            let key =
-                                                unwrap_value_to_string(command_content.get(0).unwrap())
-                                                    .unwrap();
-                                            let storage = storage.lock().await;
-
-                                            let mut value = Value::NullBulkString;
-                                            for _ in 1..50{
-                                                if let Ok(get_value) = storage.get_value(key.clone()){
-                                                    value = Value::BulkString(get_value);
-                                                    break;
-                                                }
-                                            }
-                                            if value == Value::NullBulkString {panic!("Fail get value of key {}", key)} else{ value }
-                                        }
-                                        _ => Value::NullBulkString,
-                                    };
-                                    writer
-                                        .write_all(result.serialize().as_bytes())
+                    //read client stream
+                    let (mut reader, mut writer) = split(stream);
+                    loop {
+                        sleep(Duration::from_millis(1600)).await;
+                        match read_value(&mut reader).await {
+                            Ok(Some(response)) => {
+                                let (command, command_content) = extract_command(response).unwrap();
+                                let result = match command.as_str() {
+                                    "INFO" => handle_info(command_content, replication.clone())
                                         .await
-                                        .unwrap();
-                                }
-                                Ok(None) => {
-                                    println!("Got nothing from client");
-                                    break;
-                                }
-                                Err(e) => println!("Got error from slave: {}", e),
+                                        .expect("Error when handle KEY"),
+                                    "GET" => {
+                                        let key =
+                                            unwrap_value_to_string(command_content.get(0).unwrap())
+                                                .unwrap();
+                                        let storage = storage.lock().await;
+
+                                        let mut value = Value::NullBulkString;
+                                        for _ in 1..100 {
+                                            if let Ok(get_value) = storage.get_value(key.clone()) {
+                                                value = Value::BulkString(get_value);
+                                                break;
+                                            }
+                                        }
+                                        if value == Value::NullBulkString {
+                                            panic!("Fail get value of key {}", key)
+                                        } else {
+                                            value
+                                        }
+                                    }
+                                    _ => Value::NullBulkString,
+                                };
+                                writer
+                                    .write_all(result.serialize().as_bytes())
+                                    .await
+                                    .unwrap();
                             }
+                            Ok(None) => {
+                                println!("Got nothing from client");
+                                break;
+                            }
+                            Err(e) => println!("Got error from slave: {}", e),
                         }
-                    });
+                    }
                 }
                 Err(e) => println!("Connection error: {}", e),
             }
         }
+        // });
     } else {
         //master side
         let listener = TcpListener::bind(format!("127.0.0.1:{}", rdb_argument.get_port().unwrap()))
