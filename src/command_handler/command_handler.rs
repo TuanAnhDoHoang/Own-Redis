@@ -30,6 +30,7 @@ pub async fn command_handler (
         "INFO" => handle_info(command_content, replication).await.expect("Error when handle KEY"),
         "REPLCONF" => handle_replconf().expect("Error when handle replconf"),
         "PSYNC" => handle_psync(replication).await.expect("Error when handle psync"),
+        "TYPE" => handle_type(command_content, storage).expect("Error when handle type"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -191,4 +192,18 @@ pub async fn handle_psync(replication: Arc<Mutex<Replication>>) -> Result<Value>
         "FULLRESYNC {} 0",
         replication.get_master_replid().unwrap()
     )))
+}
+pub fn handle_type(command_content: Vec<Value>, storage: &mut Store) -> Result<Value>{
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    match storage.get_value(key.clone()){
+        Ok(_) => {
+            Ok(Value::SimpleString("string".to_string()))
+        },
+        Err(e) => {
+            // Err(anyhow::anyhow!("Can not get key {} - error {}", key, e))
+            eprintln!("Error when get value of {} -- error {}", key, e);
+            Ok(Value::SimpleString("none".to_string()))
+        }
+    }
+
 }

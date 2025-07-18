@@ -87,42 +87,6 @@ pub async fn read_value(reader: &mut ReadHalf<TcpStream>) -> Result<Option<Value
         )),
     }
 }
-pub async fn read_value_native(reader: &mut ReadHalf<TcpStream>) -> Result<()> {
-    //array format : *1\r\n$3\r\nSET\r\n$6\r\nanhdoo\r\n$6\r\nrustea\r\n
-    let mut buffer: [u8; 1024] = [0; 1024];
-    reader.read(&mut buffer).await?;
-    
-    let mut last = 0;
-    for i in 0..buffer.len() {
-        if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
-            last = i + 1;
-            break;
-        }
-    }
-
-    let mut result: Vec<String> = Vec::new();
-
-    while last < buffer.len() {
-        println!("last: {}", last);
-        let mut len_next_command = 0;
-        for i in last..buffer.len() {
-            if buffer[i] == b'\n' && buffer[i - 1] == b'\r' {
-                len_next_command = String::from_utf8_lossy(&buffer[last + 1..i - 1])
-                    .parse()
-                    .unwrap();
-                last = i + 1;
-                break;
-            }
-        }
-        result.push(String::from_utf8_lossy(&buffer[last..last + len_next_command]).to_string());
-        last = last + len_next_command + 2;
-        if buffer[last] == b'\0'{
-            break;
-        }
-    }
-    Ok(())
-}
-
 pub async fn write_value(writer: Arc<Mutex<WriteHalf<TcpStream>>>, payload: String) {
     println!("LOG_FROM_write_value -- payload: {}", payload);
     let mut writer = writer.lock().await;

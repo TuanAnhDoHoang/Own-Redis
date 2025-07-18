@@ -2,25 +2,25 @@ mod command_handler;
 mod rdb;
 mod resp;
 mod store;
-
-use crate::command_handler::command_handler::handle_info;
-use crate::resp::resp::{read_value_native, read_without_parse};
-use crate::{
-    command_handler::command_handler::command_handler, rdb::argument::flags_handler,
-    resp::resp::unwrap_value_to_string, store::store::Store,
-};
+//sys
 use core::panic;
-use resp::resp::{read_value, write_value};
-use resp::{resp::extract_command, value::Value};
-use std::env::args;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::io::AsyncReadExt;
-use tokio::sync::Mutex;
-use tokio::time::sleep;
+use std::{
+    env::args,
+    sync::Arc
+};
 use tokio::{
-    io::{split, AsyncWriteExt},
+    sync::Mutex,
+    io::{split, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+};
+//module
+use crate::{
+    resp::{
+        resp::{extract_command, read_without_parse, read_value, write_value},
+        value::Value
+    },
+    command_handler::command_handler::{command_handler, handle_info}, rdb::argument::flags_handler,
+    resp::resp::unwrap_value_to_string, store::store::Store,
 };
 
 #[tokio::main]
@@ -118,11 +118,26 @@ async fn main() {
                     );
                     last = last + len_next_command + 2;
                 }
-                storage_clone
-                    .lock()
-                    .await
-                    .set_value(result[1].clone(), result[2].clone())
-                    .unwrap();
+                match result[0].as_str(){
+                    "SET" => {
+                        storage_clone
+                            .lock()
+                            .await
+                            .set_value(result[1].clone(), result[2].clone())
+                            .unwrap();
+                    },
+                    "REPLCONF GETACK *" => {
+                        if result[1].as_str() == "GETACK" && result[2] == "*" {
+                            let payload = Value::Array(vec![
+                                Value::BulkString("REPLCONF".to_string()),
+                                Value::BulkString("ACK".to_string()),
+                                Value::BulkString("0".to_string()),
+                            ]);
+                           master_writer.write_all(payload.serialize().as_bytes()).await.unwrap();
+                        }
+                    }
+                    _ => {println!("Slave can not handle this command {}", result[0])}
+                }
             }
         });
         loop {
@@ -211,6 +226,7 @@ async fn main() {
                                         replication.clone(),
                                     )
                                     .await;
+
                                     write_value(writer.clone(), Value::serialize(&result)).await;
 
                                     // handle second time
