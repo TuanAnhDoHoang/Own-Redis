@@ -102,7 +102,8 @@ pub async fn write_value(writer: Arc<Mutex<WriteHalf<TcpStream>>>, payload: Stri
 
 pub fn parse_payload(payload: &[u8]) -> Result<(Value, usize)> {
     match payload[0] as char {
-        '+' => parse_simple_string(payload),
+        '+'  => parse_simple_string(payload),
+        '-'  => parse_simple_string(payload),
         '$' => parse_bulk_string(payload),
         '*' => parse_array(payload),
         _ => Err(anyhow::anyhow!(
