@@ -1,4 +1,4 @@
-use anyhow::{Error, Result};
+use anyhow::Result;
 use std::collections::HashMap;
 #[derive(Clone)]
 struct StreamType {
@@ -46,19 +46,20 @@ impl StreamType {
     // }
 }
 
-pub fn split_stream_id(stream_id: &str) -> Result<(usize, usize)> {
+pub fn split_stream_id(stream_id: &str) -> Result<(String, String)> {
     let mut stream_id_splited = stream_id.split('-');
     Ok((
         stream_id_splited
             .next()
             .expect(format!("Can not get stream_time in stream_id: {}", stream_id).as_str())
-            .parse::<usize>()
-            .expect("Can not parse stream time to usize"),
+            .to_string(),
+        // .parse::<usize>()
+        // .expect("Can not parse stream time to usize"),
         stream_id_splited
             .next()
             .expect(format!("Can not get sequence number in stream_id: {}", stream_id).as_str())
-            .parse::<usize>()
-            .expect("Can not parse sequence number to usize"),
+            .to_string(), // .parse::<usize>()
+                          // .expect("Can not parse sequence number to usize"),
     ))
 }
 
@@ -79,9 +80,21 @@ impl Entry {
     }
     pub fn add_stream(&mut self, stream_key: &str, stream_id: &str) -> StreamEntryValidate {
         let (stream_time, sequence_number) = split_stream_id(stream_id).unwrap();
+        let stream_time = if stream_time.as_str() == "*" {
+            self.gen_new_stream_time(&stream_key).unwrap()
+        } else {
+            stream_time.parse::<usize>().unwrap()
+        };
+        let sequence_number = if sequence_number.as_str() == "*" {
+            self.gen_new_sequence_number(&stream_key, stream_time)
+                .unwrap()
+        } else {
+            sequence_number.parse::<usize>().unwrap()
+        };
+        let stream_id = format!("{}-{}", stream_time, sequence_number);
         match self.validate(stream_key, stream_time, sequence_number) {
-            StreamEntryValidate::Successfull => {
-                let new_stream = StreamType::new_with_stream_id(stream_id);
+            StreamEntryValidate::Successfull(_) => {
+                let new_stream = StreamType::new_with_stream_id(stream_id.as_str());
                 match self.collection.get_mut(stream_key) {
                     Some(streams) => {
                         streams.push(new_stream);
@@ -92,17 +105,44 @@ impl Entry {
                             .unwrap();
                     }
                 }
-                StreamEntryValidate::Successfull 
+                StreamEntryValidate::Successfull(stream_id.to_string())
             }
             e => e,
         }
     }
-    fn validate(&self, stream_key: &str, stream_time: usize, sequence_number: usize) -> StreamEntryValidate {
-        if stream_time == 0 && sequence_number == 0{
-           return StreamEntryValidate::EGreaterThan0_0; 
+
+    fn gen_new_stream_time(&self, stream_key: &str) -> Result<usize> {
+        let streams = self.collection.get(stream_key).unwrap();
+        let last = streams
+            .last()
+            .expect(format!("Erro when get last streams of stream key {}", stream_key).as_str());
+        Ok(last.stream_time + 1)
+    }
+    fn gen_new_sequence_number(&self, stream_key: &str, stream_time: usize) -> Result<usize> {
+        let streams = self.collection.get(stream_key).unwrap();
+        let mut result;
+        if stream_time != 0 {
+            result = 0;
+        } else {
+            result = 1;
         }
-        let stream = self.collection.get(stream_key).unwrap();
-        match stream.last() {
+        if let Some(last) = streams.last() {
+            if last.stream_time == stream_time{ result = last.sequence_number + 1;}
+        }
+        Ok(result)
+    }
+
+    fn validate(
+        &self,
+        stream_key: &str,
+        stream_time: usize,
+        sequence_number: usize,
+    ) -> StreamEntryValidate {
+        if stream_time == 0 && sequence_number == 0 {
+            return StreamEntryValidate::EGreaterThan0_0;
+        }
+        let streams = self.collection.get(stream_key).unwrap();
+        match streams.last() {
             Some(last_stream) => {
                 println!(
                     "LOG_FROM_validate --- {}:{} && {}:{}",
@@ -115,14 +155,14 @@ impl Entry {
                     || (last_stream.stream_time == stream_time
                         && last_stream.sequence_number < sequence_number)
                 {
-                    StreamEntryValidate::Successfull
+                    StreamEntryValidate::Successfull("".to_string())
                 } else {
-                    StreamEntryValidate::EIsSmallerOrEqual //must be greater than 
+                    StreamEntryValidate::EIsSmallerOrEqual //must be greater than
                 }
             }
             None => {
                 if stream_time > 0 || sequence_number > 0 {
-                    StreamEntryValidate::Successfull
+                    StreamEntryValidate::Successfull("".to_string())
                 } else {
                     StreamEntryValidate::EGreaterThan0_0 //must be greater than 0-0
                 }
@@ -162,17 +202,21 @@ impl Entry {
     }
 }
 
-pub enum StreamEntryValidate{
-    Successfull,
+pub enum StreamEntryValidate {
+    Successfull(String),
     EGreaterThan0_0,
-    EIsSmallerOrEqual
+    EIsSmallerOrEqual,
 }
-impl StreamEntryValidate{
-    pub fn as_msg(&self) -> String{
-        match self{
-            Self::EGreaterThan0_0 => format!("ERR The ID specified in XADD must be greater than 0-0"),
-            Self::EIsSmallerOrEqual => format!("ERR The ID specified in XADD is equal or smaller than the target stream top item"),
-            _ => format!("")
+impl StreamEntryValidate {
+    pub fn as_msg(&self) -> String {
+        match self {
+            Self::EGreaterThan0_0 => {
+                format!("ERR The ID specified in XADD must be greater than 0-0")
+            }
+            Self::EIsSmallerOrEqual => format!(
+                "ERR The ID specified in XADD is equal or smaller than the target stream top item"
+            ),
+            _ => format!(""),
         }
     }
 }

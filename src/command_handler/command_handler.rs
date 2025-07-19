@@ -232,7 +232,7 @@ pub fn handle_type(command_content: Vec<Value>, storage: &mut Store) -> Result<V
 
 pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
     let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    let stream_id = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let mut stream_id = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
 
     //get stream by key stream and stream id to add new key value pairs
     if !storage.entry.check_stream_key_exist(&stream_key) {
@@ -240,7 +240,7 @@ pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<V
     }
     if !storage.entry.check_stream_id_exist(&stream_key, &stream_id) {
         match storage.entry.add_stream(&stream_key, &stream_id) {
-            StreamEntryValidate::Successfull => (),
+            StreamEntryValidate::Successfull(stream_id_change) => {stream_id = stream_id_change;} ,
             c => match c {
                 StreamEntryValidate::EGreaterThan0_0 => {
                     return Ok(Value::SimpleError(c.as_msg()))
