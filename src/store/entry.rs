@@ -78,20 +78,37 @@ impl Entry {
         self.collection.insert(stream_key.to_string(), Vec::new());
         Ok(())
     }
-    pub fn add_stream(&mut self, stream_key: &str, stream_id: &str) -> StreamEntryValidate {
-        let (stream_time, sequence_number) = split_stream_id(stream_id).unwrap();
-        let stream_time = if stream_time.as_str() == "*" {
-            self.gen_new_stream_time(&stream_key).unwrap()
+    fn parse_stream_id(&self, stream_key: &str, stream_id: &str) -> Result<(String, usize, usize)> {
+        let (stream_time, sequence_number) = if stream_id == "*" {
+            let stream_time = self.gen_new_stream_time().unwrap();
+            let sequence_number = self
+                .gen_new_sequence_number(&stream_key, stream_time)
+                .unwrap();
+
+            (stream_time, sequence_number)
         } else {
-            stream_time.parse::<usize>().unwrap()
-        };
-        let sequence_number = if sequence_number.as_str() == "*" {
-            self.gen_new_sequence_number(&stream_key, stream_time)
-                .unwrap()
-        } else {
-            sequence_number.parse::<usize>().unwrap()
+            let (stream_time, sequence_number) = split_stream_id(stream_id).unwrap();
+            let stream_time = if stream_time.as_str() == "*" {
+                self.gen_new_stream_time().unwrap()
+            } else {
+                stream_time.parse::<usize>().unwrap()
+            };
+            let sequence_number = if sequence_number.as_str() == "*" {
+                self.gen_new_sequence_number(&stream_key, stream_time)
+                    .unwrap()
+            } else {
+                sequence_number.parse::<usize>().unwrap()
+            };
+            (stream_time, sequence_number)
         };
         let stream_id = format!("{}-{}", stream_time, sequence_number);
+        Ok((stream_id, stream_time, sequence_number))
+    }
+
+    pub fn add_stream(&mut self, stream_key: &str, stream_id: &str) -> StreamEntryValidate {
+        let (stream_id, stream_time, sequence_number) =
+            self.parse_stream_id(stream_key, stream_id).unwrap();
+
         match self.validate(stream_key, stream_time, sequence_number) {
             StreamEntryValidate::Successfull(_) => {
                 let new_stream = StreamType::new_with_stream_id(stream_id.as_str());
@@ -111,12 +128,8 @@ impl Entry {
         }
     }
 
-    fn gen_new_stream_time(&self, stream_key: &str) -> Result<usize> {
-        let streams = self.collection.get(stream_key).unwrap();
-        let last = streams
-            .last()
-            .expect(format!("Erro when get last streams of stream key {}", stream_key).as_str());
-        Ok(last.stream_time + 1)
+    fn gen_new_stream_time(&self) -> Result<usize> {
+        Ok(chrono::Utc::now().timestamp_millis() as usize)
     }
     fn gen_new_sequence_number(&self, stream_key: &str, stream_time: usize) -> Result<usize> {
         let streams = self.collection.get(stream_key).unwrap();
@@ -127,7 +140,9 @@ impl Entry {
             result = 1;
         }
         if let Some(last) = streams.last() {
-            if last.stream_time == stream_time{ result = last.sequence_number + 1;}
+            if last.stream_time == stream_time {
+                result = last.sequence_number + 1;
+            }
         }
         Ok(result)
     }
