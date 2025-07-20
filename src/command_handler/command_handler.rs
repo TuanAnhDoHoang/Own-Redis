@@ -35,6 +35,7 @@ pub async fn command_handler(
             .expect("Error when handle psync"),
         "TYPE" => handle_type(command_content, storage).expect("Error when handle type"),
         "XADD" => handle_xadd(command_content, storage).expect("Error when handle xadd"),
+        "XRANGE" => handle_xrange(command_content, storage).expect("Error when handle xrange"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -240,11 +241,11 @@ pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<V
     }
     if !storage.entry.check_stream_id_exist(&stream_key, &stream_id) {
         match storage.entry.add_stream(&stream_key, &stream_id) {
-            StreamEntryValidate::Successfull(stream_id_change) => {stream_id = stream_id_change;} ,
+            StreamEntryValidate::Successfull(stream_id_change) => {
+                stream_id = stream_id_change;
+            }
             c => match c {
-                StreamEntryValidate::EGreaterThan0_0 => {
-                    return Ok(Value::SimpleError(c.as_msg()))
-                }
+                StreamEntryValidate::EGreaterThan0_0 => return Ok(Value::SimpleError(c.as_msg())),
                 StreamEntryValidate::EIsSmallerOrEqual => {
                     return Ok(Value::SimpleError(c.as_msg()))
                 }
@@ -264,6 +265,57 @@ pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<V
         }
         Ok(Value::BulkString(stream_id.to_string()))
     } else {
-        Ok(Value::SimpleError(StreamEntryValidate::EIsSmallerOrEqual.as_msg()))
+        Ok(Value::SimpleError(
+            StreamEntryValidate::EIsSmallerOrEqual.as_msg(),
+        ))
     }
+}
+pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+    let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let end = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap();
+
+    let (st_time, st_seq) = if start.contains('-') {
+        let mut start = start.split('-');
+        (
+            start.next().unwrap().parse::<usize>().unwrap(),
+            start.next().unwrap().parse::<usize>().unwrap(),
+        )
+    } else {
+        (start.parse::<usize>().unwrap(), 0 as usize)
+    };
+
+    let (end_time, end_seq) = if end.contains('-') {
+        let mut end = end.split('-');
+        (
+            end.next().unwrap().parse::<usize>().unwrap(),
+            end.next().unwrap().parse::<usize>().unwrap(),
+        )
+    } else {
+        (
+            end.parse::<usize>().unwrap(),
+            storage.entry.get_max_sequece_number(&stream_key).unwrap(),
+        )
+    };
+
+    let result =
+        storage
+            .entry
+            .get_streams_in_range(&stream_key, st_time, end_time, st_seq, end_seq);
+    // println!("LOG_FROM_handle_xrange --- result {:?}", result);
+    let mut streams: Vec<Value> = Vec::new();
+    for stream in result {
+        let collection = stream.get_collection().unwrap();
+        let mut s = Vec::new();
+        s.push(Value::BulkString(stream.get_stream_id().unwrap()));
+        for pair in collection {
+            s.push(Value::Array(vec![
+                Value::BulkString(pair.0.to_owned()),
+                Value::BulkString(pair.1.to_owned()),
+            ]));
+        }
+        streams.push(Value::Array(s));
+    }
+
+    Ok(Value::Array(streams))
 }

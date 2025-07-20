@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
-#[derive(Clone)]
-struct StreamType {
+#[derive(Clone, Debug)]
+pub struct StreamType {
     stream_id: String,
     collection: HashMap<String, String>,
     //splitted
@@ -39,11 +39,11 @@ impl StreamType {
     // pub fn get_sequence_number(&self) -> Result<usize> {
     //     Ok(self.sequence_number)
     // }
-    // pub fn get_collection(&mut self) -> Result<&mut HashMap<String, String>>{
-    //     Ok(
-    //         &mut self.collection
-    //     )
-    // }
+    pub fn get_collection(&self) -> Result<&HashMap<String, String>>{
+        Ok(
+            &self.collection
+        )
+    }
 }
 
 pub fn split_stream_id(stream_id: &str) -> Result<(String, String)> {
@@ -214,6 +214,38 @@ impl Entry {
     }
     pub fn check_stream_key_exist(&self, stream_key: &str) -> bool {
         self.collection.contains_key(stream_key)
+    }
+    pub fn get_streams_in_range(
+        &self,
+        stream_key: &str,
+        st_time: usize,
+        end_time: usize,
+        st_seq: usize,
+        end_seq: usize,
+    ) -> Vec<&StreamType> {
+        // println!("LOG_FROM_get_stream_in_range {} {} {} {}", st_time, end_time, st_seq, end_seq);
+        let streams = self
+            .collection
+            .get(stream_key)
+            .expect(format!("Stream key {} not valid", stream_key).as_str());
+        // println!("LOG_FROM_get_stream_in_range {:?}", streams);
+        let mut result = Vec::new();
+        for stream in streams {
+            if (stream.stream_time >= st_time && stream.stream_time <= end_time) &&
+            (stream.sequence_number >= st_seq && stream.sequence_number <= end_seq)
+            {
+                result.push(stream);
+            }
+        }
+        result
+    }
+    pub fn get_max_sequece_number(&self, stream_key: &str) -> Result<usize>{
+        let mut result = 0;
+        let streams = self.collection.get(stream_key).unwrap();
+        for stream in streams{
+            result = result.max(stream.sequence_number);
+        }
+        Ok(result)
     }
 }
 
