@@ -281,7 +281,11 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
             start.next().unwrap().parse::<usize>().unwrap(),
             start.next().unwrap().parse::<usize>().unwrap(),
         )
-    } else {
+    } 
+    else if start == "-"{
+        (0, 0)
+    }
+    else {
         (start.parse::<usize>().unwrap(), 0 as usize)
     };
 
