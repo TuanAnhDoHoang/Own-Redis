@@ -330,8 +330,8 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
     Ok(Value::Array(streams))
 }
 pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
-    let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let stream_key = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let start = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap();
     let (st_time, st_seq) = if start.contains('-') && start.len() > 1 {
         let mut start = start.split('-');
         (
@@ -342,6 +342,7 @@ pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<
         (start.parse::<usize>().unwrap(), 0 as usize)
     };
 
+    
     let streams = storage.entry.get_streams_from_start(&stream_key, st_time, st_seq);
     let mut result: Vec<Value> = Vec::new(); 
     result.push(Value::BulkString(stream_key));
