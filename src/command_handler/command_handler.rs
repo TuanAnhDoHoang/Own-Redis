@@ -295,7 +295,12 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
             end.next().unwrap().parse::<usize>().unwrap(),
             end.next().unwrap().parse::<usize>().unwrap(),
         )
-    } else {
+    } 
+    else if end == "+"{
+        let end_stream = storage.entry.get_max_sequece_number(&stream_key).unwrap();
+        (end_stream, end_stream)
+    }
+    else {
         (
             end.parse::<usize>().unwrap(),
             storage.entry.get_max_sequece_number(&stream_key).unwrap(),
