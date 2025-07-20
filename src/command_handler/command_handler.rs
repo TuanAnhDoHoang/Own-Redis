@@ -275,7 +275,7 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
     let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
     let end = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap();
 
-    let (st_time, st_seq) = if start.contains('-') {
+    let (st_time, st_seq) = if start.contains('-') && start.len() > 1{
         let mut start = start.split('-');
         (
             start.next().unwrap().parse::<usize>().unwrap(),
