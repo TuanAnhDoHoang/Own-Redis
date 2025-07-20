@@ -342,7 +342,7 @@ pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<
         (start.parse::<usize>().unwrap(), 0 as usize)
     };
 
-    
+
     let streams = storage.entry.get_streams_from_start(&stream_key, st_time, st_seq);
     let mut result: Vec<Value> = Vec::new(); 
     result.push(Value::BulkString(stream_key));
@@ -359,5 +359,5 @@ pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<
         result.push(Value::Array(s));
     }
 
-    Ok(Value::Array(result))
+    Ok(Value::Array(vec![Value::Array(result)]))
 }
