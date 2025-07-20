@@ -371,5 +371,5 @@ pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<
         result.push(Value::Array(array_stream_key));
         stream_id_index += 1;
     }
-    Ok(Value::Array(vec![Value::Array(result)]))
+    Ok(Value::Array(result))
 }
