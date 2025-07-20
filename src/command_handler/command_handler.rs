@@ -356,7 +356,7 @@ pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<
                 Value::BulkString(pair.1.to_owned())
             ]));
         }
-        result.push(Value::Array(s));
+        result.push(Value::Array(vec![Value::Array(s)]));
     }
 
     Ok(Value::Array(vec![Value::Array(result)]))
