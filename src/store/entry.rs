@@ -255,7 +255,9 @@ impl Entry {
             .expect(format!("Stream key {} not valid", stream_key).as_str());
         let mut result = Vec::new();
         for stream in streams {
-            if stream.stream_time > st_time && stream.sequence_number >= st_seq{
+            if (stream.stream_time == st_time && stream.sequence_number > st_seq)
+                || (stream.stream_time > st_time)
+            {
                 result.push(stream);
             }
         }
