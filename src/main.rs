@@ -199,6 +199,8 @@ async fn main() {
                 eprintln!("Failed to bind to address: {}", e);
                 std::process::exit(1);
             });
+
+        let storage = Arc::new(Mutex::new(Store::new()));
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
@@ -206,7 +208,7 @@ async fn main() {
                     let writer = Arc::new(Mutex::new(writer));
 
                     //clone for loop
-                    let mut storage: Store = Store::new();
+                    let storage = storage.clone();
                     let mut rdb_argument = rdb_argument.clone();
                     let mut rdb_file = rdb_file.clone();
                     let replication = replication.clone();
@@ -220,7 +222,7 @@ async fn main() {
                                     let result = command_handler(
                                         command.clone(),
                                         command_content.clone(),
-                                        &mut storage,
+                                        storage.clone(),
                                         &mut rdb_argument,
                                         &mut rdb_file,
                                         replication.clone(),

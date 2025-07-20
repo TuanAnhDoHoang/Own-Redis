@@ -25,20 +25,10 @@ impl StreamType {
     pub fn get_stream_id(&self) -> Result<String> {
         Ok(self.stream_id.clone())
     }
-    // pub fn set_stream_id(&mut self, stream_id: &str) -> Result<()> {
-    //     self.stream_id = stream_id.to_string();
-    //     Ok(())
-    // }
     pub fn add_to_collection(&mut self, key: &str, value: &str) -> Result<()> {
         self.collection.insert(key.to_string(), value.to_string());
         Ok(())
     }
-    // pub fn get_stream_time(&self) -> Result<usize> {
-    //     Ok(self.stream_time)
-    // }
-    // pub fn get_sequence_number(&self) -> Result<usize> {
-    //     Ok(self.sequence_number)
-    // }
     pub fn get_collection(&self) -> Result<&HashMap<String, String>> {
         Ok(&self.collection)
     }

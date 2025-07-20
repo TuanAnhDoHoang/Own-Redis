@@ -5,14 +5,14 @@ use crate::{
     {resp::value::Value, store::store::Store},
 };
 use anyhow::Result;
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::sleep};
 
 pub async fn command_handler(
     command: String,
     command_content: Vec<Value>,
-    storage: &mut Store,
+    storage: Arc<Mutex<Store>>,
     rdb_argument: &mut Argument,
     rdb_file: &mut RdbFile,
     replication: Arc<Mutex<Replication>>,
@@ -23,7 +23,9 @@ pub async fn command_handler(
         "SET" => handle_set(command_content, storage)
             .await
             .expect("Error when handle SET"),
-        "GET" => handle_get(command_content, storage, rdb_file).expect("Error when handle GET"),
+        "GET" => handle_get(command_content, storage, rdb_file)
+            .await
+            .expect("Error when handle GET"),
         "CONFIG" => handle_config(command_content, rdb_argument).expect("Error when handle CONFIG"),
         "KEYS" => handle_key(command_content, rdb_file).expect("Error when handle KEY"),
         "INFO" => handle_info(command_content, replication)
@@ -33,10 +35,18 @@ pub async fn command_handler(
         "PSYNC" => handle_psync(replication)
             .await
             .expect("Error when handle psync"),
-        "TYPE" => handle_type(command_content, storage).expect("Error when handle type"),
-        "XADD" => handle_xadd(command_content, storage).expect("Error when handle xadd"),
-        "XRANGE" => handle_xrange(command_content, storage).expect("Error when handle xrange"),
-        "XREAD" => handle_xread(command_content, storage).expect("Error when handle xread"),
+        "TYPE" => handle_type(command_content, storage)
+            .await
+            .expect("Error when handle type"),
+        "XADD" => handle_xadd(command_content, storage)
+            .await
+            .expect("Error when handle xadd"),
+        "XRANGE" => handle_xrange(command_content, storage)
+            .await
+            .expect("Error when handle xrange"),
+        "XREAD" => handle_xread(command_content, storage)
+            .await
+            .expect("Error when handle xread"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -49,7 +59,8 @@ pub fn handle_ping() -> Result<Value> {
 pub fn handle_echo(command_content: Vec<Value>) -> Result<Value> {
     Ok(command_content.get(0).unwrap().clone())
 }
-pub async fn handle_set(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+pub async fn handle_set(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+    let mut storage = storage.lock().await;
     let key = command_content.get(0).unwrap().clone();
     let value = command_content.get(1).unwrap().clone();
     let key = unwrap_value_to_string(&key).expect(&format!(
@@ -90,11 +101,12 @@ pub async fn handle_set(command_content: Vec<Value>, storage: &mut Store) -> Res
         )),
     }
 }
-pub fn handle_get(
+pub async fn handle_get(
     command_content: Vec<Value>,
-    storage: &mut Store,
+    storage: Arc<Mutex<Store>>,
     rdb_file: &mut RdbFile,
 ) -> Result<Value> {
+    let storage = storage.lock().await;
     let key = command_content.get(0).unwrap().clone();
     let key = unwrap_value_to_string(&key).expect(&format!(
         "Get error when unwrap Value key {:?} to string",
@@ -213,7 +225,8 @@ pub async fn handle_psync(replication: Arc<Mutex<Replication>>) -> Result<Value>
         replication.get_master_replid().unwrap()
     )))
 }
-pub fn handle_type(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+pub async fn handle_type(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+    let storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
 
     let key_type: &str = match storage.entry.check_stream_key_exist(&key) {
@@ -232,10 +245,13 @@ pub fn handle_type(command_content: Vec<Value>, storage: &mut Store) -> Result<V
     Ok(Value::SimpleString(key_type.to_string()))
 }
 
-pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+pub async fn handle_xadd(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+
+    //parse arguments
     let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut stream_id = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
 
+    let mut storage = storage.lock().await;
     //get stream by key stream and stream id to add new key value pairs
     if !storage.entry.check_stream_key_exist(&stream_key) {
         storage.entry.add_new_stream_key(&stream_key).unwrap();
@@ -271,7 +287,11 @@ pub fn handle_xadd(command_content: Vec<Value>, storage: &mut Store) -> Result<V
         ))
     }
 }
-pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+pub async fn handle_xrange(
+    command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
+    let storage = storage.lock().await;
     let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
     let end = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap();
@@ -325,21 +345,36 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
 
     Ok(Value::Array(streams))
 }
-pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
-    if command_content.get(0).unwrap() != &Value::BulkString("streams".to_string()) {
-        println!("Must be streams")
+pub async fn handle_xread(
+    command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
+    let first_arg = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let mut stream_keys_argument_start = 1;
+    if first_arg == "streams" {
+        stream_keys_argument_start = 1;
+    } else if first_arg == "block" {
+        stream_keys_argument_start = 3;
+        let block_time = unwrap_value_to_string(command_content.get(1).unwrap())
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        if block_time > 0{
+            sleep(Duration::from_millis(block_time)).await;
+        }
     }
-    let stream_keys = command_content[1..=(command_content.len() - 1) / 2]
+    let storage = storage.lock().await;
+    let stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
         .iter()
         .map(|c| unwrap_value_to_string(c).unwrap())
         .collect::<Vec<String>>();
 
-    let mut stream_id_index = (command_content.len() - 1) / 2 + 1;
+    let mut stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
     let mut result = Vec::new();
-    for stream_key in stream_keys{
+    for stream_key in stream_keys {
         let mut array_stream_key: Vec<Value> = Vec::new();
         array_stream_key.push(Value::BulkString(stream_key.clone()));
-        let start = unwrap_value_to_string(command_content.get(stream_id_index).unwrap()).unwrap(); 
+        let start = unwrap_value_to_string(command_content.get(stream_id_index).unwrap()).unwrap();
         //get time and sequence from start value
         let (st_time, st_seq) = if start.contains('-') && start.len() > 1 {
             let mut start = start.split('-');
@@ -354,15 +389,18 @@ pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<
             .entry
             .get_streams_from_start(&stream_key, st_time, st_seq);
 
+        //if cannot get any streams by condition
+        if streams.len() == 0{ return Ok(Value::NullBulkString);}
+        
         let mut streams_array = Vec::new();
-        for stream in streams{
+        for stream in streams {
             let mut stream_array = Vec::new();
             stream_array.push(Value::BulkString(stream.get_stream_id().unwrap()));
             let collection = stream.get_collection().unwrap();
             let mut pair_array = Vec::new();
-            for pair in collection{
-               pair_array.push(Value::BulkString(pair.0.to_owned())); 
-               pair_array.push(Value::BulkString(pair.1.to_owned())); 
+            for pair in collection {
+                pair_array.push(Value::BulkString(pair.0.to_owned()));
+                pair_array.push(Value::BulkString(pair.1.to_owned()));
             }
             stream_array.push(Value::Array(pair_array));
             streams_array.push(Value::Array(stream_array));
