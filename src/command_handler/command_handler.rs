@@ -1,9 +1,13 @@
-use crate::rdb::argument::Argument;
-use crate::rdb::parse_rdb::RdbFile;
-use crate::rdb::replication::Replication;
-use crate::store::entry::StreamEntryValidate;
-use crate::unwrap_value_to_string;
-use crate::{resp::value::Value, store::store::Store};
+use crate::{
+    store::entry::StreamEntryValidate,
+    unwrap_value_to_string,
+    {resp::value::Value, store::store::Store},
+    rdb::{
+        argument::Argument,
+        parse_rdb::RdbFile,
+        replication::Replication,
+    }
+};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,6 +40,7 @@ pub async fn command_handler(
         "TYPE" => handle_type(command_content, storage).expect("Error when handle type"),
         "XADD" => handle_xadd(command_content, storage).expect("Error when handle xadd"),
         "XRANGE" => handle_xrange(command_content, storage).expect("Error when handle xrange"),
+        "XREAD" => handle_xread(command_content, storage).expect("Error when handle xread"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -275,17 +280,15 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
     let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
     let end = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap();
 
-    let (st_time, st_seq) = if start.contains('-') && start.len() > 1{
+    let (st_time, st_seq) = if start.contains('-') && start.len() > 1 {
         let mut start = start.split('-');
         (
             start.next().unwrap().parse::<usize>().unwrap(),
             start.next().unwrap().parse::<usize>().unwrap(),
         )
-    } 
-    else if start == "-"{
+    } else if start == "-" {
         (0, 0)
-    }
-    else {
+    } else {
         (start.parse::<usize>().unwrap(), 0 as usize)
     };
 
@@ -295,12 +298,10 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
             end.next().unwrap().parse::<usize>().unwrap(),
             end.next().unwrap().parse::<usize>().unwrap(),
         )
-    } 
-    else if end == "+"{
+    } else if end == "+" {
         let end_stream = storage.entry.get_max_sequece_number(&stream_key).unwrap();
         (end_stream, end_stream)
-    }
-    else {
+    } else {
         (
             end.parse::<usize>().unwrap(),
             storage.entry.get_max_sequece_number(&stream_key).unwrap(),
@@ -327,4 +328,35 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
     }
 
     Ok(Value::Array(streams))
+}
+pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
+    let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let (st_time, st_seq) = if start.contains('-') && start.len() > 1 {
+        let mut start = start.split('-');
+        (
+            start.next().unwrap().parse::<usize>().unwrap(),
+            start.next().unwrap().parse::<usize>().unwrap(),
+        )
+    }else {
+        (start.parse::<usize>().unwrap(), 0 as usize)
+    };
+
+    let streams = storage.entry.get_streams_from_start(&stream_key, st_time, st_seq);
+    let mut result: Vec<Value> = Vec::new(); 
+    result.push(Value::BulkString(stream_key));
+    for stream in streams{
+        let collection = stream.get_collection().unwrap();
+        let mut s: Vec<Value> = Vec::new();
+        s.push(Value::BulkString(stream.get_stream_id().unwrap()));
+        for pair in collection{
+            s.push(Value::Array(vec![
+                Value::BulkString(pair.0.to_owned()),
+                Value::BulkString(pair.1.to_owned())
+            ]));
+        }
+        result.push(Value::Array(s));
+    }
+
+    Ok(Value::Array(result))
 }

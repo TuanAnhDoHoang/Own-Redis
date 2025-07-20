@@ -39,10 +39,8 @@ impl StreamType {
     // pub fn get_sequence_number(&self) -> Result<usize> {
     //     Ok(self.sequence_number)
     // }
-    pub fn get_collection(&self) -> Result<&HashMap<String, String>>{
-        Ok(
-            &self.collection
-        )
+    pub fn get_collection(&self) -> Result<&HashMap<String, String>> {
+        Ok(&self.collection)
     }
 }
 
@@ -223,29 +221,45 @@ impl Entry {
         st_seq: usize,
         end_seq: usize,
     ) -> Vec<&StreamType> {
-        // println!("LOG_FROM_get_stream_in_range {} {} {} {}", st_time, end_time, st_seq, end_seq);
         let streams = self
             .collection
             .get(stream_key)
             .expect(format!("Stream key {} not valid", stream_key).as_str());
-        // println!("LOG_FROM_get_stream_in_range {:?}", streams);
         let mut result = Vec::new();
         for stream in streams {
-            if (stream.stream_time >= st_time && stream.stream_time <= end_time) &&
-            (stream.sequence_number >= st_seq && stream.sequence_number <= end_seq)
+            if (stream.stream_time >= st_time && stream.stream_time <= end_time)
+                && (stream.sequence_number >= st_seq && stream.sequence_number <= end_seq)
             {
                 result.push(stream);
             }
         }
         result
     }
-    pub fn get_max_sequece_number(&self, stream_key: &str) -> Result<usize>{
+    pub fn get_max_sequece_number(&self, stream_key: &str) -> Result<usize> {
         let mut result = 0;
         let streams = self.collection.get(stream_key).unwrap();
-        for stream in streams{
+        for stream in streams {
             result = result.max(stream.sequence_number);
         }
         Ok(result)
+    }
+    pub fn get_streams_from_start(
+        &self,
+        stream_key: &str,
+        st_time: usize,
+        st_seq: usize,
+    ) -> Vec<&StreamType> {
+        let streams = self
+            .collection
+            .get(stream_key)
+            .expect(format!("Stream key {} not valid", stream_key).as_str());
+        let mut result = Vec::new();
+        for stream in streams {
+            if stream.stream_time > st_time && stream.sequence_number >= st_seq{
+                result.push(stream);
+            }
+        }
+        result
     }
 }
 
