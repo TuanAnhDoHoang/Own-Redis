@@ -1,12 +1,8 @@
 use crate::{
+    rdb::{argument::Argument, parse_rdb::RdbFile, replication::Replication},
     store::entry::StreamEntryValidate,
     unwrap_value_to_string,
     {resp::value::Value, store::store::Store},
-    rdb::{
-        argument::Argument,
-        parse_rdb::RdbFile,
-        replication::Replication,
-    }
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -330,34 +326,50 @@ pub fn handle_xrange(command_content: Vec<Value>, storage: &mut Store) -> Result
     Ok(Value::Array(streams))
 }
 pub fn handle_xread(command_content: Vec<Value>, storage: &mut Store) -> Result<Value> {
-    let stream_key = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
-    let start = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap();
-    let (st_time, st_seq) = if start.contains('-') && start.len() > 1 {
-        let mut start = start.split('-');
-        (
-            start.next().unwrap().parse::<usize>().unwrap(),
-            start.next().unwrap().parse::<usize>().unwrap(),
-        )
-    }else {
-        (start.parse::<usize>().unwrap(), 0 as usize)
-    };
-
-
-    let streams = storage.entry.get_streams_from_start(&stream_key, st_time, st_seq);
-    let mut result: Vec<Value> = Vec::new(); 
-    result.push(Value::BulkString(stream_key));
-    for stream in streams{
-        let collection = stream.get_collection().unwrap();
-        let mut s: Vec<Value> = Vec::new();
-        s.push(Value::BulkString(stream.get_stream_id().unwrap()));
-        for pair in collection{
-            s.push(Value::Array(vec![
-                Value::BulkString(pair.0.to_owned()),
-                Value::BulkString(pair.1.to_owned())
-            ]));
-        }
-        result.push(Value::Array(vec![Value::Array(s)]));
+    if command_content.get(0).unwrap() != &Value::BulkString("streams".to_string()) {
+        println!("Must be streams")
     }
+    let stream_keys = command_content[1..=(command_content.len() - 1) / 2]
+        .iter()
+        .map(|c| unwrap_value_to_string(c).unwrap())
+        .collect::<Vec<String>>();
 
+    let mut stream_id_index = (command_content.len() - 1) / 2 + 1;
+    let mut result = Vec::new();
+    for stream_key in stream_keys{
+        let mut array_stream_key: Vec<Value> = Vec::new();
+        array_stream_key.push(Value::BulkString(stream_key.clone()));
+        let start = unwrap_value_to_string(command_content.get(stream_id_index).unwrap()).unwrap(); 
+        //get time and sequence from start value
+        let (st_time, st_seq) = if start.contains('-') && start.len() > 1 {
+            let mut start = start.split('-');
+            (
+                start.next().unwrap().parse::<usize>().unwrap(),
+                start.next().unwrap().parse::<usize>().unwrap(),
+            )
+        } else {
+            (start.parse::<usize>().unwrap(), 0 as usize)
+        };
+        let streams = storage
+            .entry
+            .get_streams_from_start(&stream_key, st_time, st_seq);
+
+        let mut streams_array = Vec::new();
+        for stream in streams{
+            let mut stream_array = Vec::new();
+            stream_array.push(Value::BulkString(stream.get_stream_id().unwrap()));
+            let collection = stream.get_collection().unwrap();
+            let mut pair_array = Vec::new();
+            for pair in collection{
+               pair_array.push(Value::BulkString(pair.0.to_owned())); 
+               pair_array.push(Value::BulkString(pair.1.to_owned())); 
+            }
+            stream_array.push(Value::Array(pair_array));
+            streams_array.push(Value::Array(stream_array));
+        }
+        array_stream_key.push(Value::Array(streams_array));
+        result.push(Value::Array(array_stream_key));
+        stream_id_index += 1;
+    }
     Ok(Value::Array(vec![Value::Array(result)]))
 }
