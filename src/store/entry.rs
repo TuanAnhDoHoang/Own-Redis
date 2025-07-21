@@ -32,6 +32,12 @@ impl StreamType {
     pub fn get_collection(&self) -> Result<&HashMap<String, String>> {
         Ok(&self.collection)
     }
+    // pub fn get_stream_time(&self) -> Result<usize> {
+    //     Ok(self.stream_time)
+    // }
+    // pub fn get_seq_number(&self) -> Result<usize> {
+    //     Ok(self.sequence_number)
+    // }
 }
 
 pub fn split_stream_id(stream_id: &str) -> Result<(String, String)> {
@@ -255,6 +261,10 @@ impl Entry {
     }
     pub fn get_len(&self, stream_key: &str) -> Result<usize>{
         Ok(self.collection.get(stream_key).unwrap().len())
+    }
+    pub fn get_last(&self, stream_key: &str) -> Result<String>{
+        let last = self.collection.get(stream_key).unwrap().last().unwrap();
+        Ok(last.stream_id.clone())
     }
 }
 

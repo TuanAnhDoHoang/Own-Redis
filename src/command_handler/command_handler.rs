@@ -346,25 +346,42 @@ pub async fn handle_xrange(
     Ok(Value::Array(streams))
 }
 pub async fn handle_xread(
-    command_content: Vec<Value>,
+    mut command_content: Vec<Value>,
     storage: Arc<Mutex<Store>>,
 ) -> Result<Value> {
     let first_arg = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut stream_keys_argument_start = 1;
+    let mut stream_keys ;
+    let mut stream_id_index;
     
     if first_arg == "streams" {
         stream_keys_argument_start = 1;
     } else if first_arg == "block" {
         stream_keys_argument_start = 3;
+
+        stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
+                .iter()
+                .map(|c| unwrap_value_to_string(c).unwrap())
+                .collect::<Vec<String>>();
+
+        stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
+
+
+        //check is stream id is $ -> change $ to latest stream id for stream key coresponding
+        for i in stream_id_index..(stream_id_index + stream_keys.len()){
+            if command_content[i] == Value::BulkString("$".to_string()){
+                let stream_key = unwrap_value_to_string(&command_content[i - stream_keys.len()].to_owned()).unwrap();
+                let storage_guard = storage.lock().await;
+                let last_stream_id = storage_guard.entry.get_last(&stream_key).unwrap();
+                command_content[i] = Value::BulkString(last_stream_id);
+            }
+        }
+
         let block_time = unwrap_value_to_string(command_content.get(1).unwrap())
             .unwrap()
             .parse::<u64>()
             .unwrap();
         if block_time == 0{
-            let stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
-                    .iter()
-                    .map(|c| unwrap_value_to_string(c).unwrap())
-                    .collect::<Vec<String>>();
             //save current status of storage
             let storage_guard = storage.lock().await;
             let current_len =  {
@@ -390,17 +407,17 @@ pub async fn handle_xread(
                 if next_len > current_len{ break }
             }
         }
-        if block_time > 0{
+        else if block_time > 0{
             sleep(Duration::from_millis(block_time)).await;
         }
     }
 
-    let stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
+    stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
         .iter()
         .map(|c| unwrap_value_to_string(c).unwrap())
         .collect::<Vec<String>>();
 
-    let mut stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
+    stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
     let storage = storage.lock().await;
     let mut result = Vec::new();
     for stream_key in stream_keys {
