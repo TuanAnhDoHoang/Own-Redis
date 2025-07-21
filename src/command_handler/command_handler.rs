@@ -351,6 +351,7 @@ pub async fn handle_xread(
 ) -> Result<Value> {
     let first_arg = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut stream_keys_argument_start = 1;
+    
     if first_arg == "streams" {
         stream_keys_argument_start = 1;
     } else if first_arg == "block" {
@@ -359,17 +360,48 @@ pub async fn handle_xread(
             .unwrap()
             .parse::<u64>()
             .unwrap();
+        if block_time == 0{
+            let stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
+                    .iter()
+                    .map(|c| unwrap_value_to_string(c).unwrap())
+                    .collect::<Vec<String>>();
+            //save current status of storage
+            let storage_guard = storage.lock().await;
+            let current_len =  {
+                let mut len = 0;
+                for stream_key in &stream_keys {
+                    len += storage_guard.entry.get_len(&stream_key).unwrap();
+                }
+                len
+            };
+            drop(storage_guard);
+            loop {
+                sleep(Duration::from_millis(500)).await;
+                let storage_guard = storage.lock().await;
+                //check if it differ with previous status then return else we sleep again
+                let next_len =  {
+                    let mut len = 0;
+                    for stream_key in &stream_keys {
+                        len += storage_guard.entry.get_len(&stream_key).unwrap();
+                    }
+                    len
+                };
+                drop(storage_guard);
+                if next_len > current_len{ break }
+            }
+        }
         if block_time > 0{
             sleep(Duration::from_millis(block_time)).await;
         }
     }
-    let storage = storage.lock().await;
+
     let stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
         .iter()
         .map(|c| unwrap_value_to_string(c).unwrap())
         .collect::<Vec<String>>();
 
     let mut stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
+    let storage = storage.lock().await;
     let mut result = Vec::new();
     for stream_key in stream_keys {
         let mut array_stream_key: Vec<Value> = Vec::new();

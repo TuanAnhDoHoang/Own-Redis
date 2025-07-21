@@ -253,6 +253,9 @@ impl Entry {
         }
         result
     }
+    pub fn get_len(&self, stream_key: &str) -> Result<usize>{
+        Ok(self.collection.get(stream_key).unwrap().len())
+    }
 }
 
 pub enum StreamEntryValidate {
