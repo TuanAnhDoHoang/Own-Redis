@@ -47,7 +47,7 @@ pub async fn command_handler(
         "INCR" => handle_incr(command_content, storage)
             .await
             .expect("Error when handle incr"),
-        "MULTI" => handle_multi().expect("Error when handle multi"),
+        "MULTI" => handle_multi(storage).await.expect("Error when handle multi"),
         "EXEC" => handle_exec(storage).await.expect("Error when handle exec"),
         c => {
             eprintln!("Invalid command: {}", c);
@@ -480,14 +480,21 @@ pub async fn handle_incr(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
     let value = storage.get_value(&key).unwrap();
     Ok(Value::SimpleInterger(value.to_string()))
 }
-pub fn handle_multi() -> Result<Value>{
+pub async fn handle_multi(storage: Arc<Mutex<Store>>) -> Result<Value>{
+    let mut storage = storage.lock().await;   
+    storage.transaction.push_back(&Value::BulkString("MULTI".to_string())).unwrap();
     Ok(Value::SimpleString("OK".to_string()))
 }
 pub async fn handle_exec(storage: Arc<Mutex<Store>>) -> Result<Value>{
-    let storage = storage.lock().await;
-    // if storage.transaction.len() == 0{
-    //     Ok(Value::SimpleError("ERR EXEC without MULTI".to_string()))
-    // }
-    
-    Ok(Value::SimpleError("ERR EXEC without MULTI".to_string()))
+    let mut storage = storage.lock().await;
+    let result: Vec<Value> = Vec::new();
+    match storage.transaction.get_font(){
+        Some(value) => {
+            if value == &Value::BulkString("MULTI".to_string()){
+                return Ok(Value::Array(result));
+            }
+            return Ok(Value::NullBulkString);
+        }
+        None => Ok(Value::SimpleError("ERR EXEC without MULTI".to_string()))
+    } 
 }
