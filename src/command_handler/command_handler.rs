@@ -472,7 +472,9 @@ pub async fn handle_xread(
 pub async fn handle_incr(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut storage = storage.lock().await;
-    storage.increase(&key).unwrap();
+    if storage.increase(&key).is_err(){
+        return Ok(Value::SimpleError("ERR value is not an integer or out of range".to_string()));
+    };
     let value = storage.get_value(&key).unwrap();
     Ok(Value::SimpleInterger(value.to_string()))
 }
