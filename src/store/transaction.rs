@@ -14,14 +14,14 @@ impl Transaction{
         self.queue.push_back(value.clone());
         Ok(())
     }
-    pub fn get_font(&mut self) -> Option<&mut Value>{
-        Some(self.queue.get_mut(0).unwrap())
-    }
-    // pub fn get_font_value(&mut self) -> Option<Value>{
-    //     let value = self.queue.get(0).unwrap().clone();
-    //     self.queue.remove(0).unwrap();
-    //     Some(value)
+    // pub fn get_font(&mut self) -> Option<&mut Value>{
+    //     Some(self.queue.get_mut(0).unwrap())
     // }
+    pub fn get_font_value(&mut self) -> Option<Value>{
+        let value = self.queue.get(0).unwrap().clone();
+        self.queue.remove(0).unwrap();
+        Some(value)
+    }
     // pub fn len(&self) -> usize{
     //     self.queue.len()
     // }

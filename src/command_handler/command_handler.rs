@@ -488,9 +488,9 @@ pub async fn handle_multi(storage: Arc<Mutex<Store>>) -> Result<Value>{
 pub async fn handle_exec(storage: Arc<Mutex<Store>>) -> Result<Value>{
     let mut storage = storage.lock().await;
     let result: Vec<Value> = Vec::new();
-    match storage.transaction.get_font(){
+    match storage.transaction.get_font_value(){
         Some(value) => {
-            if value == &Value::BulkString("MULTI".to_string()){
+            if value == Value::BulkString("MULTI".to_string()){
                 return Ok(Value::Array(result));
             }
             return Ok(Value::NullBulkString);
