@@ -47,6 +47,7 @@ pub async fn command_handler(
         "INCR" => handle_incr(command_content, storage)
             .await
             .expect("Error when handle incr"),
+        "MULTI" => handle_multi().expect("Error when handle multi"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -477,4 +478,7 @@ pub async fn handle_incr(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
     };
     let value = storage.get_value(&key).unwrap();
     Ok(Value::SimpleInterger(value.to_string()))
+}
+pub fn handle_multi() -> Result<Value>{
+    Ok(Value::SimpleString("OK".to_string()))
 }
