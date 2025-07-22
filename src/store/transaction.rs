@@ -18,7 +18,10 @@ impl Transaction{
     //     Some(self.queue.get_mut(0).unwrap())
     // }
     pub fn get_font_value(&mut self) -> Option<Value>{
-        let value = self.queue.get(0).unwrap().clone();
+        let value = match self.queue.get(0){
+            Some(value) => value.clone(),
+            None => return None
+        };
         self.queue.remove(0).unwrap();
         Some(value)
     }
