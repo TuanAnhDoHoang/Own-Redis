@@ -1,12 +1,9 @@
 use crate::{
-    rdb::{argument::Argument, parse_rdb::RdbFile, replication::Replication},
-    store::entry::StreamEntryValidate,
-    unwrap_value_to_string,
-    {resp::value::Value, store::store::Store},
+    rdb::{argument::Argument, parse_rdb::RdbFile, replication::Replication}, resp::value::Value, store::{entry::StreamEntryValidate, store::{Store, StoreValueType}}, unwrap_value_to_string
 };
 use anyhow::Result;
-use std::{collections::HashMap, time::Duration};
 use std::sync::Arc;
+use std::{collections::HashMap, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 
 pub async fn command_handler(
@@ -47,6 +44,9 @@ pub async fn command_handler(
         "XREAD" => handle_xread(command_content, storage)
             .await
             .expect("Error when handle xread"),
+        "INCR" => handle_incr(command_content, storage)
+            .await
+            .expect("Error when handle incr"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -85,7 +85,7 @@ pub async fn handle_set(command_content: Vec<Value>, storage: Arc<Mutex<Store>>)
                         "Get error when unwrap Value px {:?} to string",
                         px
                     ));
-                    match storage.set_value_with_px(key.clone(), value.clone(), px.clone()) {
+                    match storage.set_value(&key, &value, Some(&px)) {
                         Ok(value) => Ok(Value::SimpleString(value)),
                         Err(_) => Ok(Value::NullBulkString),
                     }
@@ -97,7 +97,7 @@ pub async fn handle_set(command_content: Vec<Value>, storage: Arc<Mutex<Store>>)
             }
         }
         None => Ok(Value::SimpleString(
-            storage.set_value(key.clone(), value.clone()).unwrap(),
+            storage.set_value(&key, &value, None).unwrap(),
         )),
     }
 }
@@ -107,11 +107,7 @@ pub async fn handle_get(
     rdb_file: &mut RdbFile,
 ) -> Result<Value> {
     let storage = storage.lock().await;
-    let key = command_content.get(0).unwrap().clone();
-    let key = unwrap_value_to_string(&key).expect(&format!(
-        "Get error when unwrap Value key {:?} to string",
-        key
-    ));
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let rdb_file_collections: HashMap<String, String> = rdb_file
         .map
         .iter()
@@ -128,8 +124,8 @@ pub async fn handle_get(
         })
         .collect::<HashMap<String, String>>();
 
-    match storage.get_value(key.clone()) {
-        Ok(value) => Ok(Value::BulkString(value)),
+    match storage.get_value(&key) {
+        Ok(value) => Ok(Value::BulkString(value.to_string())),
         Err(_) => {
             if let Some(value) = rdb_file_collections.get(&key) {
                 Ok(Value::BulkString(value.to_owned()))
@@ -229,14 +225,22 @@ pub async fn handle_type(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
     let storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
 
+    //check entry
     let key_type: &str = match storage.entry.check_stream_key_exist(&key) {
         true => "stream",
         false => {
-            match storage.get_value(key.clone()) {
-                Ok(_) => "string",
-                Err(e) => {
+            //check rengular
+            match storage.get_value(&key) {
+                Ok(value_type) => {
+                    //check type
+                    match value_type{
+                        StoreValueType::String(_) => "string",
+                        StoreValueType::Interger(_) => "interger"
+                    }
+                },
+                Err(_) => {
                     // Err(anyhow::anyhow!("Can not get key {} - error {}", key, e))
-                    eprintln!("Error when get value of {} -- error {}", key, e);
+                    // eprintln!("Error when get value of {} -- error {}", key, e);
                     "none"
                 }
             }
@@ -246,7 +250,6 @@ pub async fn handle_type(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
 }
 
 pub async fn handle_xadd(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
-
     //parse arguments
     let stream_key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut stream_id = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
@@ -351,26 +354,28 @@ pub async fn handle_xread(
 ) -> Result<Value> {
     let first_arg = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut stream_keys_argument_start = 1;
-    let mut stream_keys ;
+    let mut stream_keys;
     let mut stream_id_index;
-    
+
     if first_arg == "streams" {
         stream_keys_argument_start = 1;
     } else if first_arg == "block" {
         stream_keys_argument_start = 3;
 
-        stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
-                .iter()
-                .map(|c| unwrap_value_to_string(c).unwrap())
-                .collect::<Vec<String>>();
+        stream_keys = command_content[stream_keys_argument_start
+            ..=((command_content.len() + stream_keys_argument_start + 1) / 2 - 1)]
+            .iter()
+            .map(|c| unwrap_value_to_string(c).unwrap())
+            .collect::<Vec<String>>();
 
-        stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
-
+        stream_id_index = (command_content.len() + stream_keys_argument_start + 1) / 2;
 
         //check is stream id is $ -> change $ to latest stream id for stream key coresponding
-        for i in stream_id_index..(stream_id_index + stream_keys.len()){
-            if command_content[i] == Value::BulkString("$".to_string()){
-                let stream_key = unwrap_value_to_string(&command_content[i - stream_keys.len()].to_owned()).unwrap();
+        for i in stream_id_index..(stream_id_index + stream_keys.len()) {
+            if command_content[i] == Value::BulkString("$".to_string()) {
+                let stream_key =
+                    unwrap_value_to_string(&command_content[i - stream_keys.len()].to_owned())
+                        .unwrap();
                 let storage_guard = storage.lock().await;
                 let last_stream_id = storage_guard.entry.get_last(&stream_key).unwrap();
                 command_content[i] = Value::BulkString(last_stream_id);
@@ -381,10 +386,10 @@ pub async fn handle_xread(
             .unwrap()
             .parse::<u64>()
             .unwrap();
-        if block_time == 0{
+        if block_time == 0 {
             //save current status of storage
             let storage_guard = storage.lock().await;
-            let current_len =  {
+            let current_len = {
                 let mut len = 0;
                 for stream_key in &stream_keys {
                     len += storage_guard.entry.get_len(&stream_key).unwrap();
@@ -396,7 +401,7 @@ pub async fn handle_xread(
                 sleep(Duration::from_millis(500)).await;
                 let storage_guard = storage.lock().await;
                 //check if it differ with previous status then return else we sleep again
-                let next_len =  {
+                let next_len = {
                     let mut len = 0;
                     for stream_key in &stream_keys {
                         len += storage_guard.entry.get_len(&stream_key).unwrap();
@@ -404,20 +409,22 @@ pub async fn handle_xread(
                     len
                 };
                 drop(storage_guard);
-                if next_len > current_len{ break }
+                if next_len > current_len {
+                    break;
+                }
             }
-        }
-        else if block_time > 0{
+        } else if block_time > 0 {
             sleep(Duration::from_millis(block_time)).await;
         }
     }
 
-    stream_keys = command_content[stream_keys_argument_start..=((command_content.len() + stream_keys_argument_start + 1)/2 - 1)]
+    stream_keys = command_content[stream_keys_argument_start
+        ..=((command_content.len() + stream_keys_argument_start + 1) / 2 - 1)]
         .iter()
         .map(|c| unwrap_value_to_string(c).unwrap())
         .collect::<Vec<String>>();
 
-    stream_id_index = (command_content.len() + stream_keys_argument_start + 1)/2;
+    stream_id_index = (command_content.len() + stream_keys_argument_start + 1) / 2;
     let storage = storage.lock().await;
     let mut result = Vec::new();
     for stream_key in stream_keys {
@@ -439,8 +446,10 @@ pub async fn handle_xread(
             .get_streams_from_start(&stream_key, st_time, st_seq);
 
         //if cannot get any streams by condition
-        if streams.len() == 0{ return Ok(Value::NullBulkString);}
-        
+        if streams.len() == 0 {
+            return Ok(Value::NullBulkString);
+        }
+
         let mut streams_array = Vec::new();
         for stream in streams {
             let mut stream_array = Vec::new();
@@ -459,4 +468,11 @@ pub async fn handle_xread(
         stream_id_index += 1;
     }
     Ok(Value::Array(result))
+}
+pub async fn handle_incr(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let mut storage = storage.lock().await;
+    storage.increase(&key).unwrap();
+    let value = storage.get_value(&key).unwrap();
+    Ok(Value::SimpleInterger(value.to_string()))
 }

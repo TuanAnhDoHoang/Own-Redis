@@ -1,64 +1,80 @@
-use std::{collections::HashMap};
+use crate::store::entry::Entry;
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use crate::store::entry::Entry;
+use std::collections::HashMap;
 
-
+#[derive(Clone, Debug)]
+pub enum StoreValueType {
+    String(String),
+    Interger(i64),
+}
+impl StoreValueType {
+    pub fn to_string(&self) -> String {
+        match self {
+            StoreValueType::String(s) => s.clone(),
+            StoreValueType::Interger(i) => i.to_string()
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Store {
-    collections: HashMap<String, String>,
-    px_collection: HashMap<String, DateTime<Utc>>,
-    pub entry: Entry 
+    collections: HashMap<String, (StoreValueType, Option<DateTime<Utc>>)>,
+    pub entry: Entry,
 }
 impl Store {
     pub fn new() -> Self {
         Store {
             collections: HashMap::new(),
-            px_collection: HashMap::new(),
-            entry: Entry::new()
+            entry: Entry::new(),
         }
     }
 
-    pub fn set_value(&mut self, key: String, value: String) -> Result<String>{
-        println!("LOG_FROM_set_value --- {}:{}", key, value);
-        self.collections.insert(key, value);
-        Ok(String::from("OK"))
-    }
-
-    pub fn get_value(&self, key: String) -> Result<String>{
-        //get in expired time collection first and check if it is expired or not
-        //if it not, then get value in collection
-        match self.px_collection.get::<String>(&key){
+    pub fn set_value(&mut self, key: &str, value: &str, px: Option<&str>) -> Result<String> {
+        let px = match px {
             Some(px_time) => {
-                if px_time < &chrono::Utc::now(){
-                    //return $-1\r\n
-                    return Err(anyhow::anyhow!("Error when get_value -- key {} is expired", key));
+                Some(chrono::Utc::now() + Duration::milliseconds(px_time.parse::<i64>().unwrap()))
+            }
+            None => None,
+        };
+        let value = match value.parse::<i64>() {
+            Ok(value) => StoreValueType::Interger(value),
+            _ => StoreValueType::String(value.to_string()),
+        };
+        println!("LOG_FROM_set_value value and px: {:?}:{:?}", value, px);
+        self.collections.insert(key.to_string(), (value, px));
+        Ok(String::from("OK"))
+    }
 
-                }
-                if let Some(value) = self.collections.get::<String>(&key){
-                    return Ok(value.to_owned());
-                }
-                else{
-                    Err(anyhow::anyhow!("Error when get_value -- key {} dont has any value", key))
-                }
+    pub fn get_value(&self, key: &str) -> Result<StoreValueType> {
+        let (value, px_time) = if let Some(values) = self.collections.get(key) {
+            values
+        } else {
+            return Err(anyhow::anyhow!(
+                "Error when get_value -- key {} dont has any value",
+                key
+            ));
+        };
+        if px_time.is_none() || (px_time.unwrap() >= chrono::Utc::now()) {
+            Ok(value.to_owned())
+        } else {
+            return Err(anyhow::anyhow!(
+                "Error when get_value -- key {} dont has any value",
+                key
+            ));
+        }
+    }
+    pub fn increase(&mut self, key: &str) -> Result<()> {
+        let (value, _) = self.collections.get_mut(key).unwrap();
+        match value {
+            StoreValueType::Interger(num) => {
+                *num += 1i64;
+                Ok(())
             }
-            None => {
-                if let Some(value) = self.collections.get::<String>(&key){
-                    return Ok(value.to_owned());
-                }
-                else {Err(anyhow::anyhow!("Error when get_value -- key {} dont has any value", key))} 
-            }
+            _ => Err(anyhow::anyhow!("Value of key {} is not interger", key)),
         }
     }
 
-    pub fn set_value_with_px(&mut self, key: String, value: String, px: String) -> Result<String>{
-        let px_time: i64 = px.parse::<i64>().expect(format!("Got error when parse px time : {}", px).as_str());
-
-        self.px_collection.insert(key.clone(), chrono::Utc::now() + Duration::milliseconds(px_time));
-        self.collections.insert(key, value);
-        Ok(String::from("OK"))
-    }
     // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
     //     let mut result = Vec::new();
     //     for (key, value) in self.collections.iter() {

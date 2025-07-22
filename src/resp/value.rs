@@ -2,6 +2,7 @@
 pub enum Value {
     SimpleString(String),
     SimpleError(String),
+    SimpleInterger(String),
     BulkString(String),
     Array(Vec<Value>),
     NullBulkString,
@@ -11,6 +12,7 @@ impl Value {
         match self {
             Value::SimpleString(s) => format!("+{}\r\n", s),
             Value::SimpleError(s) => format!("-{}\r\n", s),
+            Value::SimpleInterger(s) => format!(":{}\r\n", s),
             Value::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s),
             Value::NullBulkString => String::from("$-1\r\n"),
             Value::Array(a) => {

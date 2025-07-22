@@ -123,7 +123,7 @@ async fn main() {
                         storage_clone
                             .lock()
                             .await
-                            .set_value(result[1].clone(), result[2].clone())
+                            .set_value(&result[1], &result[2], None)
                             .unwrap();
                     },
                     "REPLCONF GETACK *" => {
@@ -162,8 +162,8 @@ async fn main() {
 
                                         let mut value = Value::NullBulkString;
                                         for _ in 1..100 {
-                                            if let Ok(get_value) = storage.get_value(key.clone()) {
-                                                value = Value::BulkString(get_value);
+                                            if let Ok(get_value) = storage.get_value(&key) {
+                                                value = Value::BulkString(get_value.to_string());
                                                 break;
                                             }
                                         }
