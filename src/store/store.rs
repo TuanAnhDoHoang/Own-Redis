@@ -65,7 +65,13 @@ impl Store {
         }
     }
     pub fn increase(&mut self, key: &str) -> Result<()> {
-        let (value, _) = self.collections.get_mut(key).unwrap();
+        let value = match self.collections.get_mut(key){
+            Some(value) => &mut value.0,
+            None => {
+                self.set_value(key, "0", None).unwrap();
+                &mut self.collections.get_mut(key).unwrap().0
+            }
+        };
         match value {
             StoreValueType::Interger(num) => {
                 *num += 1i64;
