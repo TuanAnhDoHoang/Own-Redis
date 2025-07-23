@@ -1,5 +1,5 @@
 use crate::store::{entry::Entry};
-use anyhow::Result;
+use anyhow::{Result};
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 
@@ -104,6 +104,25 @@ impl Store {
         match list{
             StoreValueType::List(list) => {Ok(list.len())}
             _ => {Ok(0)}
+        }
+    }
+    pub fn get_list_range(&self, key: &str, start: i64, end: i64) -> Result<Vec<String>> { 
+        let (list, _) = self.collections.get(key).unwrap();
+        match list{
+            StoreValueType::List(list) => {
+                if start >= 0 && end >= 0{
+                    if end >= start{
+                        Ok(list[start as usize..=end as usize].to_vec())
+                    }
+                    else{
+                        Ok(Vec::new())
+                    }
+                }
+                else{
+                    Ok(Vec::new())
+                }
+            }
+            _ => {Ok(Vec::new())}
         }
     }
     // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
