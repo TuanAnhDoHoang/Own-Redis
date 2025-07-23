@@ -99,6 +99,23 @@ impl Store {
             }
         }
     }
+    pub fn push_head(&mut self, key: &str, value: &str) -> Result<usize> {
+        if self.collections.get(key).is_none(){
+            self.collections.insert(key.to_string(), (StoreValueType::List(Vec::new()), None));
+        }
+        let (list, _) = self.collections.get_mut(key).unwrap();
+        match list{
+            StoreValueType::List(list) => {
+                let mut new_list = vec![value.to_string()];
+                new_list.append(list);
+                *list = new_list;
+                Ok(list.len())
+            }
+            _ => {
+                Err(anyhow::anyhow!("Key {} has no type list anymore", key))
+            }
+        }
+    }
     pub fn get_list_size(&self, key: &str) -> Result<usize>{
         let (list, _) = self.collections.get(key).unwrap();
         match list{

@@ -61,6 +61,7 @@ pub async fn command_handler(
         "DISCARD" => handle_discard(transaction).expect("Error when handle discard"),
         "RPUSH" => handle_rpush(command_content, storage).await.expect("Error when handle rpush"),
         "LRANGE" => handle_lrange(command_content, storage).await.expect("Error when handle lrange"),
+        "LPUSH" => handle_lpush(command_content, storage).await.expect("Error when handle lpush"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -568,4 +569,14 @@ pub async fn handle_lrange(command_content: Vec<Value>,storage: Arc<Mutex<Store>
         Value::BulkString(value.to_owned())   
     }).collect::<Vec<Value>>();
     Ok(Value::Array(list))
+}
+pub async fn handle_lpush(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+    let mut storage = storage.lock().await;
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    for value in command_content.iter().skip(1){
+        let value = unwrap_value_to_string(value).unwrap();
+        storage.push_head(&key, &value).unwrap();
+    }
+    let list_size = storage.get_list_size(&key).unwrap();
+    Ok(Value::SimpleInterger(list_size.to_string()))
 }
