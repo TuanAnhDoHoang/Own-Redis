@@ -550,8 +550,10 @@ pub fn handle_discard(transaction: &mut Transaction) -> Result<Value>{
 pub async fn handle_rpush(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
     let mut storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    let value = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
-    let list_size = storage.push(&key, &value).unwrap();
-
+    for value in command_content.iter().skip(1){
+        let value = unwrap_value_to_string(value).unwrap();
+        storage.push(&key, &value).unwrap();
+    }
+    let list_size = storage.get_list_size(&key).unwrap();
     Ok(Value::SimpleInterger(list_size.to_string()))
 }

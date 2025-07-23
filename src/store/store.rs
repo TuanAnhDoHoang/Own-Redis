@@ -99,6 +99,13 @@ impl Store {
             }
         }
     }
+    pub fn get_list_size(&self, key: &str) -> Result<usize>{
+        let (list, _) = self.collections.get(key).unwrap();
+        match list{
+            StoreValueType::List(list) => {Ok(list.len())}
+            _ => {Ok(0)}
+        }
+    }
     // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
     //     let mut result = Vec::new();
     //     for (key, value) in self.collections.iter() {
