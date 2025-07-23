@@ -117,10 +117,14 @@ impl Store {
         }
     }
     pub fn get_list_size(&self, key: &str) -> Result<usize>{
-        let (list, _) = self.collections.get(key).unwrap();
-        match list{
-            StoreValueType::List(list) => {Ok(list.len())}
-            _ => {Ok(0)}
+        match self.collections.get(key){
+            Some((list, _)) => {
+                match list{
+                    StoreValueType::List(list) => {Ok(list.len())}
+                    _ => {Ok(0)}
+                }
+            }
+            None => Ok(0)
         }
     }
     pub fn get_list_range(&self, key: &str, mut start: i64, mut end: i64) -> Result<Vec<String>> { 

@@ -62,6 +62,7 @@ pub async fn command_handler(
         "RPUSH" => handle_rpush(command_content, storage).await.expect("Error when handle rpush"),
         "LRANGE" => handle_lrange(command_content, storage).await.expect("Error when handle lrange"),
         "LPUSH" => handle_lpush(command_content, storage).await.expect("Error when handle lpush"),
+        "LLEN" => handle_llen(command_content, storage).await.expect("Error when handle llen"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -577,6 +578,12 @@ pub async fn handle_lpush(command_content: Vec<Value>, storage: Arc<Mutex<Store>
         let value = unwrap_value_to_string(value).unwrap();
         storage.push_head(&key, &value).unwrap();
     }
+    let list_size = storage.get_list_size(&key).unwrap();
+    Ok(Value::SimpleInterger(list_size.to_string()))
+}
+pub async fn handle_llen(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value>{
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let storage = storage.lock().await;
     let list_size = storage.get_list_size(&key).unwrap();
     Ok(Value::SimpleInterger(list_size.to_string()))
 }
