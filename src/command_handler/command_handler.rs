@@ -563,7 +563,7 @@ pub async fn handle_lrange(command_content: Vec<Value>,storage: Arc<Mutex<Store>
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap().parse::<i64>().unwrap();
     let end = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap().parse::<i64>().unwrap();
-    let list = storage.get_list_range(&key, start, end).unwrap_or(Vec::new());
+    let list = storage.get_list_range(&key, start, end).unwrap();
     let list = list.iter().map(|value| {
         Value::BulkString(value.to_owned())   
     }).collect::<Vec<Value>>();

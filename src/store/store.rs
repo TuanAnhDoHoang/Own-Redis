@@ -110,6 +110,7 @@ impl Store {
         let (list, _) = self.collections.get(key).unwrap();
         match list{
             StoreValueType::List(list) => {
+                if end > list.len() as i64{ return Ok(Vec::new())}
                 if start >= 0 && end >= 0{
                     if end >= start{
                         Ok(list[start as usize..=end as usize].to_vec())
