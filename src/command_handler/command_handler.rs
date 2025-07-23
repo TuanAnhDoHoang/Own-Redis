@@ -4,7 +4,7 @@ use crate::{
     store::{
         entry::StreamEntryValidate,
         store::{Store, StoreValueType},
-        transaction::{Transaction},
+        transaction::Transaction,
     },
     unwrap_value_to_string,
 };
@@ -58,9 +58,7 @@ pub async fn command_handler(
         "MULTI" => handle_multi(transaction)
             .await
             .expect("Error when handle multi"),
-        // "EXEC" => handle_exec(storage, rdb_argument, rdb_file, replication)
-            // .await
-            // .expect("Error when handle exec"),
+        "DISCARD" => handle_discard(transaction).expect("Error when handle discard"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -79,11 +77,13 @@ pub async fn handle_set(
     transaction: &mut Transaction,
     storage: Arc<Mutex<Store>>,
 ) -> Result<Value> {
-    println!("YOOOOOOOOOOOO");
-    match transaction.put(&command, &mut command_content){
+    match transaction.put(&command, &mut command_content) {
         Ok(Some(response)) => return Ok(response), // return from handle_set
         Ok(None) => (),
-        Err(e) => println!("DEV_LOG: Got error when put command to queue or something: {}", e),
+        Err(e) => println!(
+            "DEV_LOG: Got error when put command to queue or something: {}",
+            e
+        ),
     }
     let mut storage = storage.lock().await;
     let key = command_content.get(0).unwrap().clone();
@@ -131,12 +131,15 @@ pub async fn handle_get(
     mut command_content: Vec<Value>,
     storage: Arc<Mutex<Store>>,
     rdb_file: &mut RdbFile,
-    transaction: &mut Transaction
+    transaction: &mut Transaction,
 ) -> Result<Value> {
-    match transaction.put(&command, &mut command_content){
+    match transaction.put(&command, &mut command_content) {
         Ok(Some(response)) => return Ok(response), // return from handle_set
         Ok(None) => (),
-        Err(e) => println!("DEV_LOG: Got error when put command to queue or something: {}", e),
+        Err(e) => println!(
+            "DEV_LOG: Got error when put command to queue or something: {}",
+            e
+        ),
     }
     let storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
@@ -505,12 +508,15 @@ pub async fn handle_incr(
     command: String,
     mut command_content: Vec<Value>,
     storage: Arc<Mutex<Store>>,
-    transaction: &mut Transaction
+    transaction: &mut Transaction,
 ) -> Result<Value> {
-    match transaction.put(&command, &mut command_content){
+    match transaction.put(&command, &mut command_content) {
         Ok(Some(response)) => return Ok(response), // return from handle_set
         Ok(None) => (),
-        Err(e) => println!("DEV_LOG: Got error when put command to queue or something: {}", e),
+        Err(e) => println!(
+            "DEV_LOG: Got error when put command to queue or something: {}",
+            e
+        ),
     }
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut storage = storage.lock().await;
@@ -527,4 +533,15 @@ pub async fn handle_multi(transaction: &mut Transaction) -> Result<Value> {
         .push_back(&Value::BulkString("MULTI".to_string()))
         .unwrap();
     Ok(Value::SimpleString("OK".to_string()))
+}
+pub fn handle_discard(transaction: &mut Transaction) -> Result<Value>{
+    if let Some(value) = transaction.get_font_value(){
+        if value == Value::BulkString("MULTI".to_string()){
+            return Ok(Value::SimpleString("OK".to_string()));
+        }
+        return Ok(Value::SimpleError("ERR DISCARD without MULTI".to_string()));
+    }
+    else{
+        Ok(Value::SimpleError("ERR DISCARD without MULTI".to_string()))
+    }
 }

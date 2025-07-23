@@ -1,4 +1,4 @@
-use crate::store::{entry::Entry, transaction::Transaction};
+use crate::store::{entry::Entry};
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
@@ -20,8 +20,7 @@ impl StoreValueType {
 #[derive(Clone)]
 pub struct Store {
     collections: HashMap<String, (StoreValueType, Option<DateTime<Utc>>)>,
-    pub entry: Entry,
-    // pub transaction: Transaction
+    pub entry: Entry
 }
 impl Store {
     pub fn new() -> Self {
