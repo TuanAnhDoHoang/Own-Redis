@@ -107,24 +107,26 @@ impl Store {
         }
     }
     pub fn get_list_range(&self, key: &str, start: i64, mut end: i64) -> Result<Vec<String>> { 
-        let (list, _) = self.collections.get(key).unwrap();
-        match list{
-            StoreValueType::List(list) => {
-                if end > list.len() as i64{ end = list.len() as i64 - 1;}
-                if start >= 0 && end >= 0{
-                    if end >= start{
-                        Ok(list[start as usize..=end as usize].to_vec())
+        if let Some((list,_)) = self.collections.get(key){
+            match list{
+                StoreValueType::List(list) => {
+                    if end > list.len() as i64{ end = list.len() as i64 - 1;}
+                    if start >= 0 && end >= 0{
+                        if end >= start{
+                            Ok(list[start as usize..=end as usize].to_vec())
+                        }
+                        else{
+                            Ok(Vec::new())
+                        }
                     }
                     else{
                         Ok(Vec::new())
                     }
                 }
-                else{
-                    Ok(Vec::new())
-                }
+                _ => {Ok(Vec::new())}
             }
-            _ => {Ok(Vec::new())}
         }
+        else{ Ok(Vec::new())}
     }
     // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
     //     let mut result = Vec::new();
