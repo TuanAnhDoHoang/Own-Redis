@@ -253,10 +253,6 @@ async fn main() {
                                                         .await,
                                                     );
                                                 }
-                                                println!(
-                                                    "LOG_FROM_EXEC_handler --- result: {:?}",
-                                                    result
-                                                );
                                                 Value::Array(result)
                                             }
                                             None => Value::SimpleError(

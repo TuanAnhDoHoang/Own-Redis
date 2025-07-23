@@ -44,7 +44,7 @@ impl Store {
             Ok(value) => StoreValueType::Interger(value),
             _ => StoreValueType::String(value.to_string()),
         };
-        println!("LOG_FROM_set_value value and px: {:?}:{:?}", value, px);
+        // println!("LOG_FROM_set_value value and px: {:?}:{:?}", value, px);
         self.collections.insert(key.to_string(), (value, px));
         Ok(String::from("OK"))
     }
