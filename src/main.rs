@@ -232,7 +232,7 @@ async fn main() {
                                                 {
                                                     Value::Array(Vec::new());
                                                 }
-                                                let result: Vec<Value> = Vec::new();
+                                                let mut result: Vec<Value> = Vec::new();
                                                 while storage_guard.transaction.len() > 0 {
                                                     let value = storage_guard
                                                         .transaction
@@ -240,7 +240,7 @@ async fn main() {
                                                         .unwrap();
                                                     let (cmd, cmd_content) =
                                                         extract_command(value).unwrap();
-                                                    command_handler(
+                                                    result.push(command_handler(
                                                         cmd,
                                                         cmd_content,
                                                         storage.clone(),
@@ -248,7 +248,7 @@ async fn main() {
                                                         &mut rdb_file,
                                                         replication.clone(),
                                                     )
-                                                    .await;
+                                                    .await);
                                                 }
                                                 Value::Array(result)                                            }
                                             None => Value::SimpleError(
