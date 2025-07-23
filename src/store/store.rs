@@ -110,10 +110,12 @@ impl Store {
         if let Some((list,_)) = self.collections.get(key){
             match list{
                 StoreValueType::List(list) => {
-                    if end > list.len() as i64{ end = list.len() as i64 - 1;}
 
                     if start < 0 { start = list.len() as i64 + start;}
                     if end < 0 { end = list.len() as i64 + end;}
+
+                    if end > list.len() as i64{ end = list.len() as i64 - 1;}
+                    if start < 0 { start = 0}
 
                     if start >= 0 && end >= 0{
                         if end >= start{
