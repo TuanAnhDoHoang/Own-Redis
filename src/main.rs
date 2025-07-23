@@ -14,12 +14,13 @@ use tokio::{
 use crate::{
     command_handler::command_handler::{command_handler, handle_info},
     rdb::argument::flags_handler,
-    resp::resp::unwrap_value_to_string,
     resp::{
-        resp::{extract_command, read_value, read_without_parse, write_value},
+        resp::{
+            extract_command, read_value, read_without_parse, unwrap_value_to_string, write_value,
+        },
         value::Value,
     },
-    store::store::Store,
+    store::{store::Store, transaction::Transaction},
 };
 
 #[tokio::main]
@@ -218,39 +219,46 @@ async fn main() {
                     let replication = replication.clone();
 
                     tokio::spawn(async move {
+                        let mut transaction = Transaction::new();
                         loop {
                             match read_value(&mut reader).await {
                                 Ok(Some(response)) => {
                                     let (command, command_content) =
                                         extract_command(response).unwrap();
                                     let result = if command == "EXEC" {
-                                        let mut storage_guard = storage.lock().await;
-                                        match storage_guard.transaction.get_font_value() {
+                                        match transaction.get_font_value() {
                                             Some(value) => {
                                                 if value == Value::BulkString("MULTI".to_string())
-                                                    && storage_guard.transaction.len() == 0
+                                                    && transaction.len() == 0
                                                 {
                                                     Value::Array(Vec::new());
                                                 }
                                                 let mut result: Vec<Value> = Vec::new();
-                                                while storage_guard.transaction.len() > 0 {
-                                                    let value = storage_guard
-                                                        .transaction
-                                                        .get_font_value()
-                                                        .unwrap();
+                                                let num_cmd = transaction.len();
+                                                for _ in 1..=num_cmd {
+                                                    let value =
+                                                        transaction.get_font_value().unwrap();
                                                     let (cmd, cmd_content) =
                                                         extract_command(value).unwrap();
-                                                    result.push(command_handler(
-                                                        cmd,
-                                                        cmd_content,
-                                                        storage.clone(),
-                                                        &mut rdb_argument,
-                                                        &mut rdb_file,
-                                                        replication.clone(),
-                                                    )
-                                                    .await);
+                                                    result.push(
+                                                        command_handler(
+                                                            cmd,
+                                                            cmd_content,
+                                                            storage.clone(),
+                                                            &mut rdb_argument,
+                                                            &mut rdb_file,
+                                                            replication.clone(),
+                                                            &mut transaction,
+                                                        )
+                                                        .await,
+                                                    );
                                                 }
-                                                Value::Array(result)                                            }
+                                                println!(
+                                                    "LOG_FROM_EXEC_handler --- result: {:?}",
+                                                    result
+                                                );
+                                                Value::Array(result)
+                                            }
                                             None => Value::SimpleError(
                                                 "ERR EXEC without MULTI".to_string(),
                                             ),
@@ -263,6 +271,7 @@ async fn main() {
                                             &mut rdb_argument,
                                             &mut rdb_file,
                                             replication.clone(),
+                                            &mut transaction,
                                         )
                                         .await
                                     };

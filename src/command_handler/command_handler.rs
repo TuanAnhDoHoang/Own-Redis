@@ -1,10 +1,10 @@
 use crate::{
     rdb::{argument::Argument, parse_rdb::RdbFile, replication::Replication},
-    resp::{value::Value},
+    resp::value::Value,
     store::{
         entry::StreamEntryValidate,
         store::{Store, StoreValueType},
-        transaction::put,
+        transaction::{Transaction},
     },
     unwrap_value_to_string,
 };
@@ -20,14 +20,15 @@ pub async fn command_handler(
     rdb_argument: &mut Argument,
     rdb_file: &mut RdbFile,
     replication: Arc<Mutex<Replication>>,
+    transaction: &mut Transaction,
 ) -> Value {
     match command.as_str() {
         "PING" => handle_ping().expect("Error when handle PING"),
         "ECHO" => handle_echo(command_content).expect("Error when handle ECHO"),
-        "SET" => handle_set(command, command_content, storage)
+        "SET" => handle_set(command, command_content, transaction, storage)
             .await
             .expect("Error when handle SET"),
-        "GET" => handle_get(command_content, storage, rdb_file)
+        "GET" => handle_get(command, command_content, storage, rdb_file, transaction)
             .await
             .expect("Error when handle GET"),
         "CONFIG" => handle_config(command_content, rdb_argument).expect("Error when handle CONFIG"),
@@ -51,10 +52,10 @@ pub async fn command_handler(
         "XREAD" => handle_xread(command_content, storage)
             .await
             .expect("Error when handle xread"),
-        "INCR" => handle_incr(command, command_content, storage)
+        "INCR" => handle_incr(command, command_content, storage, transaction)
             .await
             .expect("Error when handle incr"),
-        "MULTI" => handle_multi(storage)
+        "MULTI" => handle_multi(transaction)
             .await
             .expect("Error when handle multi"),
         // "EXEC" => handle_exec(storage, rdb_argument, rdb_file, replication)
@@ -75,12 +76,14 @@ pub fn handle_echo(command_content: Vec<Value>) -> Result<Value> {
 pub async fn handle_set(
     command: String,
     mut command_content: Vec<Value>,
+    transaction: &mut Transaction,
     storage: Arc<Mutex<Store>>,
 ) -> Result<Value> {
-    match put(&command, &mut command_content, storage.clone()).await {
+    println!("YOOOOOOOOOOOO");
+    match transaction.put(&command, &mut command_content){
         Ok(Some(response)) => return Ok(response), // return from handle_set
         Ok(None) => (),
-        Err(e) => println!("Got error when put command to queue or something: {}", e),
+        Err(e) => println!("DEV_LOG: Got error when put command to queue or something: {}", e),
     }
     let mut storage = storage.lock().await;
     let key = command_content.get(0).unwrap().clone();
@@ -124,10 +127,17 @@ pub async fn handle_set(
     }
 }
 pub async fn handle_get(
-    command_content: Vec<Value>,
+    command: String,
+    mut command_content: Vec<Value>,
     storage: Arc<Mutex<Store>>,
     rdb_file: &mut RdbFile,
+    transaction: &mut Transaction
 ) -> Result<Value> {
+    match transaction.put(&command, &mut command_content){
+        Ok(Some(response)) => return Ok(response), // return from handle_set
+        Ok(None) => (),
+        Err(e) => println!("DEV_LOG: Got error when put command to queue or something: {}", e),
+    }
     let storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let rdb_file_collections: HashMap<String, String> = rdb_file
@@ -495,21 +505,15 @@ pub async fn handle_incr(
     command: String,
     mut command_content: Vec<Value>,
     storage: Arc<Mutex<Store>>,
+    transaction: &mut Transaction
 ) -> Result<Value> {
-    match put(&command, &mut command_content, storage.clone()).await {
-        Ok(Some(response)) => return Ok(response),
+    match transaction.put(&command, &mut command_content){
+        Ok(Some(response)) => return Ok(response), // return from handle_set
         Ok(None) => (),
-        Err(e) => println!("Got error when put command to queue or something: {}", e),
+        Err(e) => println!("DEV_LOG: Got error when put command to queue or something: {}", e),
     }
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut storage = storage.lock().await;
-
-    if let Some(value) = storage.transaction.get_font() {
-        if value == &Value::BulkString("MULTI".to_string()) {
-            return Ok(Value::SimpleString("OK".to_string()));
-        }
-    }
-
     if storage.increase(&key).is_err() {
         return Ok(Value::SimpleError(
             "ERR value is not an integer or out of range".to_string(),
@@ -518,44 +522,9 @@ pub async fn handle_incr(
     let value = storage.get_value(&key).unwrap();
     Ok(Value::SimpleInterger(value.to_string()))
 }
-pub async fn handle_multi(storage: Arc<Mutex<Store>>) -> Result<Value> {
-    let mut storage = storage.lock().await;
-    storage
-        .transaction
+pub async fn handle_multi(transaction: &mut Transaction) -> Result<Value> {
+    transaction
         .push_back(&Value::BulkString("MULTI".to_string()))
         .unwrap();
     Ok(Value::SimpleString("OK".to_string()))
 }
-// pub async fn handle_exec(
-//     storage: Arc<Mutex<Store>>,
-//     rdb_argument: &mut Argument,
-//     rdb_file: &mut RdbFile,
-//     replication: Arc<Mutex<Replication>>,
-// ) -> Result<Value> {
-//     let mut storage_guard = storage.lock().await;
-//     match storage_guard.transaction.get_font_value() {
-//         Some(value) => {
-//             if value == Value::BulkString("MULTI".to_string())
-//                 && storage_guard.transaction.len() == 0
-//             {
-//                 return Ok(Value::Array(Vec::new()));
-//             }
-//             let result: Vec<Value> = Vec::new();
-//             while storage_guard.transaction.len() > 0 {
-//                 let value = storage_guard.transaction.get_font_value().unwrap();
-//                 let (cmd, cmd_content) = extract_command(value).unwrap();
-//                 command_handler(
-//                     cmd,
-//                     cmd_content,
-//                     storage.clone(),
-//                     rdb_argument,
-//                     rdb_file,
-//                     replication.clone(),
-//                 )
-//                 .await;
-//             }
-//             return Ok(Value::Array(result));
-//         }
-//         None => Ok(Value::SimpleError("ERR EXEC without MULTI".to_string())),
-//     }
-// }

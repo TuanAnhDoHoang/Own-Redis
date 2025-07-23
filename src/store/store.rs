@@ -21,14 +21,14 @@ impl StoreValueType {
 pub struct Store {
     collections: HashMap<String, (StoreValueType, Option<DateTime<Utc>>)>,
     pub entry: Entry,
-    pub transaction: Transaction
+    // pub transaction: Transaction
 }
 impl Store {
     pub fn new() -> Self {
         Store {
             collections: HashMap::new(),
             entry: Entry::new(),
-            transaction: Transaction::new()
+            // transaction: Transaction::new()
         }
     }
 
