@@ -59,6 +59,7 @@ pub async fn command_handler(
             .await
             .expect("Error when handle multi"),
         "DISCARD" => handle_discard(transaction).expect("Error when handle discard"),
+        "RPUSH" => handle_rpush(command_content, storage).await.expect("Error when handle rpush"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -271,6 +272,7 @@ pub async fn handle_type(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
                     match value_type {
                         StoreValueType::String(_) => "string",
                         StoreValueType::Interger(_) => "interger",
+                        StoreValueType::List(_) => "list",
                     }
                 }
                 Err(_) => {
@@ -544,4 +546,12 @@ pub fn handle_discard(transaction: &mut Transaction) -> Result<Value>{
     else{
         Ok(Value::SimpleError("ERR DISCARD without MULTI".to_string()))
     }
+}
+pub async fn handle_rpush(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+    let mut storage = storage.lock().await;
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let value = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap();
+    let list_size = storage.push(&key, &value).unwrap();
+
+    Ok(Value::SimpleInterger(list_size.to_string()))
 }

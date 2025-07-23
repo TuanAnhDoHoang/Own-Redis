@@ -46,26 +46,3 @@ impl Transaction {
         else{ Ok(None) }
     }
 }
-
-// pub async fn put(
-//     command: &str,
-//     command_content: &mut Vec<Value>,
-//     storage: Arc<Mutex<Store>>,
-// ) -> Result<Option<Value>> {
-//     let mut storage = storage.lock().await;
-//     if let Some(value) = storage.transaction.get_font() {
-//         if value == &Value::BulkString("MULTI".to_string()) {
-//             let mut full_cmd = vec![Value::BulkString(command.to_string())];
-//             full_cmd.append(command_content);
-//             storage
-//                 .transaction
-//                 .push_back(&Value::Array(full_cmd))
-//                 .unwrap();
-//             return Ok(Some(Value::SimpleString("QUEUED".to_string())));
-//         }
-//         //if it has no multi, then return none to execute agular
-//         return Ok(None);
-//     } else {
-//         return Ok(None);
-//     }
-// }

@@ -7,12 +7,14 @@ use std::collections::HashMap;
 pub enum StoreValueType {
     String(String),
     Interger(i64),
+    List(Vec<String>)
 }
 impl StoreValueType {
     pub fn to_string(&self) -> String {
         match self {
             StoreValueType::String(s) => s.clone(),
-            StoreValueType::Interger(i) => i.to_string()
+            StoreValueType::Interger(i) => i.to_string(),
+            _ => "".to_string()
         }
     }
 }
@@ -82,6 +84,21 @@ impl Store {
         }
     }
 
+    pub fn push(&mut self, key: &str, value: &str) -> Result<usize> {
+        if self.collections.get(key).is_none(){
+            self.collections.insert(key.to_string(), (StoreValueType::List(Vec::new()), None));
+        }
+        let (list, _) = self.collections.get_mut(key).unwrap();
+        match list{
+            StoreValueType::List(list) => {
+                list.push(value.to_string());
+                Ok(list.len())
+            }
+            _ => {
+                Err(anyhow::anyhow!("Key {} has no type list anymore", key))
+            }
+        }
+    }
     // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
     //     let mut result = Vec::new();
     //     for (key, value) in self.collections.iter() {
