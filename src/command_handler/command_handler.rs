@@ -1,5 +1,12 @@
 use crate::{
-    rdb::{argument::Argument, parse_rdb::RdbFile, replication::Replication}, resp::value::Value, store::{entry::StreamEntryValidate, store::{Store, StoreValueType}}, unwrap_value_to_string
+    rdb::{argument::Argument, parse_rdb::RdbFile, replication::Replication},
+    resp::{value::Value},
+    store::{
+        entry::StreamEntryValidate,
+        store::{Store, StoreValueType},
+        transaction::put,
+    },
+    unwrap_value_to_string,
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -17,7 +24,7 @@ pub async fn command_handler(
     match command.as_str() {
         "PING" => handle_ping().expect("Error when handle PING"),
         "ECHO" => handle_echo(command_content).expect("Error when handle ECHO"),
-        "SET" => handle_set(command_content, storage)
+        "SET" => handle_set(command, command_content, storage)
             .await
             .expect("Error when handle SET"),
         "GET" => handle_get(command_content, storage, rdb_file)
@@ -44,11 +51,15 @@ pub async fn command_handler(
         "XREAD" => handle_xread(command_content, storage)
             .await
             .expect("Error when handle xread"),
-        "INCR" => handle_incr(command_content, storage)
+        "INCR" => handle_incr(command, command_content, storage)
             .await
             .expect("Error when handle incr"),
-        "MULTI" => handle_multi(storage).await.expect("Error when handle multi"),
-        "EXEC" => handle_exec(storage).await.expect("Error when handle exec"),
+        "MULTI" => handle_multi(storage)
+            .await
+            .expect("Error when handle multi"),
+        // "EXEC" => handle_exec(storage, rdb_argument, rdb_file, replication)
+            // .await
+            // .expect("Error when handle exec"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -61,7 +72,16 @@ pub fn handle_ping() -> Result<Value> {
 pub fn handle_echo(command_content: Vec<Value>) -> Result<Value> {
     Ok(command_content.get(0).unwrap().clone())
 }
-pub async fn handle_set(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+pub async fn handle_set(
+    command: String,
+    mut command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
+    match put(&command, &mut command_content, storage.clone()).await {
+        Ok(Some(response)) => return Ok(response), // return from handle_set
+        Ok(None) => (),
+        Err(e) => println!("Got error when put command to queue or something: {}", e),
+    }
     let mut storage = storage.lock().await;
     let key = command_content.get(0).unwrap().clone();
     let value = command_content.get(1).unwrap().clone();
@@ -235,11 +255,11 @@ pub async fn handle_type(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
             match storage.get_value(&key) {
                 Ok(value_type) => {
                     //check type
-                    match value_type{
+                    match value_type {
                         StoreValueType::String(_) => "string",
-                        StoreValueType::Interger(_) => "interger"
+                        StoreValueType::Interger(_) => "interger",
                     }
-                },
+                }
                 Err(_) => {
                     // Err(anyhow::anyhow!("Can not get key {} - error {}", key, e))
                     // eprintln!("Error when get value of {} -- error {}", key, e);
@@ -471,30 +491,71 @@ pub async fn handle_xread(
     }
     Ok(Value::Array(result))
 }
-pub async fn handle_incr(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+pub async fn handle_incr(
+    command: String,
+    mut command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
+    match put(&command, &mut command_content, storage.clone()).await {
+        Ok(Some(response)) => return Ok(response),
+        Ok(None) => (),
+        Err(e) => println!("Got error when put command to queue or something: {}", e),
+    }
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let mut storage = storage.lock().await;
-    if storage.increase(&key).is_err(){
-        return Ok(Value::SimpleError("ERR value is not an integer or out of range".to_string()));
+
+    if let Some(value) = storage.transaction.get_font() {
+        if value == &Value::BulkString("MULTI".to_string()) {
+            return Ok(Value::SimpleString("OK".to_string()));
+        }
+    }
+
+    if storage.increase(&key).is_err() {
+        return Ok(Value::SimpleError(
+            "ERR value is not an integer or out of range".to_string(),
+        ));
     };
     let value = storage.get_value(&key).unwrap();
     Ok(Value::SimpleInterger(value.to_string()))
 }
-pub async fn handle_multi(storage: Arc<Mutex<Store>>) -> Result<Value>{
-    let mut storage = storage.lock().await;   
-    storage.transaction.push_back(&Value::BulkString("MULTI".to_string())).unwrap();
+pub async fn handle_multi(storage: Arc<Mutex<Store>>) -> Result<Value> {
+    let mut storage = storage.lock().await;
+    storage
+        .transaction
+        .push_back(&Value::BulkString("MULTI".to_string()))
+        .unwrap();
     Ok(Value::SimpleString("OK".to_string()))
 }
-pub async fn handle_exec(storage: Arc<Mutex<Store>>) -> Result<Value>{
-    let mut storage = storage.lock().await;
-    let result: Vec<Value> = Vec::new();
-    match storage.transaction.get_font_value(){
-        Some(value) => {
-            if value == Value::BulkString("MULTI".to_string()){
-                return Ok(Value::Array(result));
-            }
-            return Ok(Value::NullBulkString);
-        }
-        None => Ok(Value::SimpleError("ERR EXEC without MULTI".to_string()))
-    } 
-}
+// pub async fn handle_exec(
+//     storage: Arc<Mutex<Store>>,
+//     rdb_argument: &mut Argument,
+//     rdb_file: &mut RdbFile,
+//     replication: Arc<Mutex<Replication>>,
+// ) -> Result<Value> {
+//     let mut storage_guard = storage.lock().await;
+//     match storage_guard.transaction.get_font_value() {
+//         Some(value) => {
+//             if value == Value::BulkString("MULTI".to_string())
+//                 && storage_guard.transaction.len() == 0
+//             {
+//                 return Ok(Value::Array(Vec::new()));
+//             }
+//             let result: Vec<Value> = Vec::new();
+//             while storage_guard.transaction.len() > 0 {
+//                 let value = storage_guard.transaction.get_font_value().unwrap();
+//                 let (cmd, cmd_content) = extract_command(value).unwrap();
+//                 command_handler(
+//                     cmd,
+//                     cmd_content,
+//                     storage.clone(),
+//                     rdb_argument,
+//                     rdb_file,
+//                     replication.clone(),
+//                 )
+//                 .await;
+//             }
+//             return Ok(Value::Array(result));
+//         }
+//         None => Ok(Value::SimpleError("ERR EXEC without MULTI".to_string())),
+//     }
+// }

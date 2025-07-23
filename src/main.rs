@@ -4,23 +4,22 @@ mod resp;
 mod store;
 //sys
 use core::panic;
-use std::{
-    env::args,
-    sync::Arc
-};
+use std::{env::args, sync::Arc};
 use tokio::{
-    sync::Mutex,
     io::{split, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+    sync::Mutex,
 };
 //module
 use crate::{
+    command_handler::command_handler::{command_handler, handle_info},
+    rdb::argument::flags_handler,
+    resp::resp::unwrap_value_to_string,
     resp::{
-        resp::{extract_command, read_without_parse, read_value, write_value},
-        value::Value
+        resp::{extract_command, read_value, read_without_parse, write_value},
+        value::Value,
     },
-    command_handler::command_handler::{command_handler, handle_info}, rdb::argument::flags_handler,
-    resp::resp::unwrap_value_to_string, store::store::Store,
+    store::store::Store,
 };
 
 #[tokio::main]
@@ -118,14 +117,14 @@ async fn main() {
                     );
                     last = last + len_next_command + 2;
                 }
-                match result[0].as_str(){
+                match result[0].as_str() {
                     "SET" => {
                         storage_clone
                             .lock()
                             .await
                             .set_value(&result[1], &result[2], None)
                             .unwrap();
-                    },
+                    }
                     "REPLCONF GETACK *" => {
                         if result[1].as_str() == "GETACK" && result[2] == "*" {
                             let payload = Value::Array(vec![
@@ -133,10 +132,15 @@ async fn main() {
                                 Value::BulkString("ACK".to_string()),
                                 Value::BulkString("0".to_string()),
                             ]);
-                           master_writer.write_all(payload.serialize().as_bytes()).await.unwrap();
+                            master_writer
+                                .write_all(payload.serialize().as_bytes())
+                                .await
+                                .unwrap();
                         }
                     }
-                    _ => {println!("Slave can not handle this command {}", result[0])}
+                    _ => {
+                        println!("Slave can not handle this command {}", result[0])
+                    }
                 }
             }
         });
@@ -219,15 +223,49 @@ async fn main() {
                                 Ok(Some(response)) => {
                                     let (command, command_content) =
                                         extract_command(response).unwrap();
-                                    let result = command_handler(
-                                        command.clone(),
-                                        command_content.clone(),
-                                        storage.clone(),
-                                        &mut rdb_argument,
-                                        &mut rdb_file,
-                                        replication.clone(),
-                                    )
-                                    .await;
+                                    let result = if command == "EXEC" {
+                                        let mut storage_guard = storage.lock().await;
+                                        match storage_guard.transaction.get_font_value() {
+                                            Some(value) => {
+                                                if value == Value::BulkString("MULTI".to_string())
+                                                    && storage_guard.transaction.len() == 0
+                                                {
+                                                    Value::Array(Vec::new());
+                                                }
+                                                let result: Vec<Value> = Vec::new();
+                                                while storage_guard.transaction.len() > 0 {
+                                                    let value = storage_guard
+                                                        .transaction
+                                                        .get_font_value()
+                                                        .unwrap();
+                                                    let (cmd, cmd_content) =
+                                                        extract_command(value).unwrap();
+                                                    command_handler(
+                                                        cmd,
+                                                        cmd_content,
+                                                        storage.clone(),
+                                                        &mut rdb_argument,
+                                                        &mut rdb_file,
+                                                        replication.clone(),
+                                                    )
+                                                    .await;
+                                                }
+                                                Value::Array(result)                                            }
+                                            None => Value::SimpleError(
+                                                "ERR EXEC without MULTI".to_string(),
+                                            ),
+                                        }
+                                    } else {
+                                        command_handler(
+                                            command.clone(),
+                                            command_content.clone(),
+                                            storage.clone(),
+                                            &mut rdb_argument,
+                                            &mut rdb_file,
+                                            replication.clone(),
+                                        )
+                                        .await
+                                    };
 
                                     write_value(writer.clone(), Value::serialize(&result)).await;
 
