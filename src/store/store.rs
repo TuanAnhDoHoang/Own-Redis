@@ -106,11 +106,15 @@ impl Store {
             _ => {Ok(0)}
         }
     }
-    pub fn get_list_range(&self, key: &str, start: i64, mut end: i64) -> Result<Vec<String>> { 
+    pub fn get_list_range(&self, key: &str, mut start: i64, mut end: i64) -> Result<Vec<String>> { 
         if let Some((list,_)) = self.collections.get(key){
             match list{
                 StoreValueType::List(list) => {
                     if end > list.len() as i64{ end = list.len() as i64 - 1;}
+                    
+                    if start < 0 { start = list.len() as i64 - start;}
+                    if end < 0 { end = list.len() as i64 - end;}
+
                     if start >= 0 && end >= 0{
                         if end >= start{
                             Ok(list[start as usize..=end as usize].to_vec())
