@@ -1,13 +1,13 @@
 use crate::store::{entry::Entry};
 use anyhow::{Result};
 use chrono::{DateTime, Duration, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug)]
 pub enum StoreValueType {
     String(String),
     Interger(i64),
-    List(Vec<String>)
+    List(VecDeque<String>)
 }
 impl StoreValueType {
     pub fn to_string(&self) -> String {
@@ -86,12 +86,12 @@ impl Store {
 
     pub fn push(&mut self, key: &str, value: &str) -> Result<usize> {
         if self.collections.get(key).is_none(){
-            self.collections.insert(key.to_string(), (StoreValueType::List(Vec::new()), None));
+            self.collections.insert(key.to_string(), (StoreValueType::List(VecDeque::new()), None));
         }
         let (list, _) = self.collections.get_mut(key).unwrap();
         match list{
             StoreValueType::List(list) => {
-                list.push(value.to_string());
+                list.push_back(value.to_string());
                 Ok(list.len())
             }
             _ => {
@@ -101,14 +101,12 @@ impl Store {
     }
     pub fn push_head(&mut self, key: &str, value: &str) -> Result<usize> {
         if self.collections.get(key).is_none(){
-            self.collections.insert(key.to_string(), (StoreValueType::List(Vec::new()), None));
+            self.collections.insert(key.to_string(), (StoreValueType::List(VecDeque::new()), None));
         }
         let (list, _) = self.collections.get_mut(key).unwrap();
         match list{
             StoreValueType::List(list) => {
-                let mut new_list = vec![value.to_string()];
-                new_list.append(list);
-                *list = new_list;
+                list.push_front(value.to_string());
                 Ok(list.len())
             }
             _ => {
@@ -127,7 +125,7 @@ impl Store {
             None => Ok(0)
         }
     }
-    pub fn get_list_range(&self, key: &str, mut start: i64, mut end: i64) -> Result<Vec<String>> { 
+    pub fn get_list_range(&self, key: &str, mut start: i64, mut end: i64) -> Result<VecDeque<String>> { 
         if let Some((list,_)) = self.collections.get(key){
             match list{
                 StoreValueType::List(list) => {
@@ -140,20 +138,31 @@ impl Store {
 
                     if start >= 0 && end >= 0{
                         if end >= start{
-                            Ok(list[start as usize..=end as usize].to_vec())
+                            let start = start as usize;
+                            let end = end as usize;
+                            Ok(list.iter().skip(start).take(end-start+1).cloned().collect())
                         }
                         else{
-                            Ok(Vec::new())
+                            Ok(VecDeque::new())
                         }
                     }
                     else{
-                        Ok(Vec::new())
+                        Ok(VecDeque::new())
                     }
                 }
-                _ => {Ok(Vec::new())}
+                _ => {Ok(VecDeque::new())}
             }
         }
-        else{ Ok(Vec::new())}
+        else{ Ok(VecDeque::new())}
+    }
+    pub fn pop_front_list(&mut self, key: &str) -> Result<Option<String>>{
+        if let Some((value, _)) = self.collections.get_mut(key){
+            match value {
+                StoreValueType::List(list) => return Ok(list.pop_front()),
+                _ => return Ok(None)
+            }
+        }
+        Ok(None)
     }
     // pub fn get_all(&self) -> Result<Vec<(String, String)>>{
     //     let mut result = Vec::new();
