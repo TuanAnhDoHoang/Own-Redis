@@ -74,6 +74,9 @@ pub async fn command_handler(
         "LPOP" => handle_lpop(command_content, storage)
             .await
             .expect("Error when handle lpop"),
+        "BLPOP" => handle_blpop(command_content, storage)
+            .await
+            .expect("Error when handle bpop"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -641,5 +644,35 @@ pub async fn handle_lpop(command_content: Vec<Value>, storage: Arc<Mutex<Store>>
             }
         }
         Err(e) => Err(anyhow::anyhow!("Got error when handle lpop {}", e)),
+    }
+}
+pub async fn handle_blpop(
+    command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
+    let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    loop {
+        let mut storage = storage.lock().await;
+        let response = storage.pop_front_list(&key, 1);
+        drop(storage);
+        match response {
+            Ok(value) => {
+                if let Some(value) = value {
+                    if value.len() == 0 {
+                        sleep(Duration::from_millis(500)).await;
+                    } else {
+                        
+                        // return Ok(Value::Array(value.iter().map(|v|Value::BulkString(v.to_owned())).collect()));
+                        return Ok(Value::Array(vec![
+                            Value::BulkString(key),
+                            Value::BulkString(value[0].to_owned())
+                        ]));
+                    }
+                } else {
+                    sleep(Duration::from_millis(500)).await;
+                }
+            }
+            Err(e) => return Err(anyhow::anyhow!("Got error when handle lpop {}", e)),
+        }
     }
 }
