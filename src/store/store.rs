@@ -155,10 +155,17 @@ impl Store {
         }
         else{ Ok(VecDeque::new())}
     }
-    pub fn pop_front_list(&mut self, key: &str) -> Result<Option<String>>{
+    pub fn pop_front_list(&mut self, key: &str, mut number: usize) -> Result<Option<Vec<String>>>{
         if let Some((value, _)) = self.collections.get_mut(key){
             match value {
-                StoreValueType::List(list) => return Ok(list.pop_front()),
+                StoreValueType::List(list) => {
+                    let mut values = Vec::new();
+                    if number > list.len() { number = list.len()}
+                    for _ in 1..=number{
+                        values.push(list.pop_front().unwrap())
+                    }
+                    return Ok(Some(values));
+                }
                 _ => return Ok(None)
             }
         }

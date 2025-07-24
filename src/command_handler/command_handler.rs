@@ -59,11 +59,21 @@ pub async fn command_handler(
             .await
             .expect("Error when handle multi"),
         "DISCARD" => handle_discard(transaction).expect("Error when handle discard"),
-        "RPUSH" => handle_rpush(command_content, storage).await.expect("Error when handle rpush"),
-        "LRANGE" => handle_lrange(command_content, storage).await.expect("Error when handle lrange"),
-        "LPUSH" => handle_lpush(command_content, storage).await.expect("Error when handle lpush"),
-        "LLEN" => handle_llen(command_content, storage).await.expect("Error when handle llen"),
-        "LPOP" => handle_lpop(command_content, storage).await.expect("Error when handle lpop"),
+        "RPUSH" => handle_rpush(command_content, storage)
+            .await
+            .expect("Error when handle rpush"),
+        "LRANGE" => handle_lrange(command_content, storage)
+            .await
+            .expect("Error when handle lrange"),
+        "LPUSH" => handle_lpush(command_content, storage)
+            .await
+            .expect("Error when handle lpush"),
+        "LLEN" => handle_llen(command_content, storage)
+            .await
+            .expect("Error when handle llen"),
+        "LPOP" => handle_lpop(command_content, storage)
+            .await
+            .expect("Error when handle lpop"),
         c => {
             eprintln!("Invalid command: {}", c);
             Value::NullBulkString
@@ -540,60 +550,96 @@ pub async fn handle_multi(transaction: &mut Transaction) -> Result<Value> {
         .unwrap();
     Ok(Value::SimpleString("OK".to_string()))
 }
-pub fn handle_discard(transaction: &mut Transaction) -> Result<Value>{
-    if let Some(value) = transaction.get_font_value(){
-        if value == Value::BulkString("MULTI".to_string()){
+pub fn handle_discard(transaction: &mut Transaction) -> Result<Value> {
+    if let Some(value) = transaction.get_font_value() {
+        if value == Value::BulkString("MULTI".to_string()) {
             return Ok(Value::SimpleString("OK".to_string()));
         }
         return Ok(Value::SimpleError("ERR DISCARD without MULTI".to_string()));
-    }
-    else{
+    } else {
         Ok(Value::SimpleError("ERR DISCARD without MULTI".to_string()))
     }
 }
-pub async fn handle_rpush(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+pub async fn handle_rpush(
+    command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
     let mut storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    for value in command_content.iter().skip(1){
+    for value in command_content.iter().skip(1) {
         let value = unwrap_value_to_string(value).unwrap();
         storage.push(&key, &value).unwrap();
     }
     let list_size = storage.get_list_size(&key).unwrap();
     Ok(Value::SimpleInterger(list_size.to_string()))
 }
-pub async fn handle_lrange(command_content: Vec<Value>,storage: Arc<Mutex<Store>>) -> Result<Value>{
+pub async fn handle_lrange(
+    command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
     let storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    let start = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap().parse::<i64>().unwrap();
-    let end = unwrap_value_to_string(command_content.get(2).unwrap()).unwrap().parse::<i64>().unwrap();
+    let start = unwrap_value_to_string(command_content.get(1).unwrap())
+        .unwrap()
+        .parse::<i64>()
+        .unwrap();
+    let end = unwrap_value_to_string(command_content.get(2).unwrap())
+        .unwrap()
+        .parse::<i64>()
+        .unwrap();
     let list = storage.get_list_range(&key, start, end).unwrap();
-    let list = list.iter().map(|value| {
-        Value::BulkString(value.to_owned())   
-    }).collect::<Vec<Value>>();
+    let list = list
+        .iter()
+        .map(|value| Value::BulkString(value.to_owned()))
+        .collect::<Vec<Value>>();
     Ok(Value::Array(list))
 }
-pub async fn handle_lpush(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
+pub async fn handle_lpush(
+    command_content: Vec<Value>,
+    storage: Arc<Mutex<Store>>,
+) -> Result<Value> {
     let mut storage = storage.lock().await;
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    for value in command_content.iter().skip(1){
+    for value in command_content.iter().skip(1) {
         let value = unwrap_value_to_string(value).unwrap();
         storage.push_head(&key, &value).unwrap();
     }
     let list_size = storage.get_list_size(&key).unwrap();
     Ok(Value::SimpleInterger(list_size.to_string()))
 }
-pub async fn handle_llen(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value>{
+pub async fn handle_llen(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
     let storage = storage.lock().await;
     let list_size = storage.get_list_size(&key).unwrap();
     Ok(Value::SimpleInterger(list_size.to_string()))
 }
-pub async fn handle_lpop(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value>{
+pub async fn handle_lpop(command_content: Vec<Value>, storage: Arc<Mutex<Store>>) -> Result<Value> {
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
+    let number = unwrap_value_to_string(
+        command_content
+            .get(1)
+            .unwrap_or(&Value::BulkString("1".to_string())),
+    )
+    .unwrap();
+
     let mut storage = storage.lock().await;
-    match storage.pop_front_list(&key){
+    match storage.pop_front_list(&key, number.parse::<usize>().unwrap()) {
         Ok(None) => Ok(Value::NullBulkString),
-        Ok(value) => Ok(Value::BulkString(value.unwrap())),
-        Err(e) => Err(anyhow::anyhow!("Got error when handle lpop {}", e))
+        Ok(value) => {
+            let value = value.unwrap();
+            if value.len() == 0 {
+                return Ok(Value::NullBulkString);
+            } else if value.len() == 1 {
+                return Ok(Value::BulkString(value[0].to_owned()));
+            } else {
+                return Ok(Value::Array(
+                    value
+                        .iter()
+                        .map(|v| Value::BulkString(v.to_owned()))
+                        .collect::<Vec<Value>>(),
+                ));
+            }
+        }
+        Err(e) => Err(anyhow::anyhow!("Got error when handle lpop {}", e)),
     }
 }
