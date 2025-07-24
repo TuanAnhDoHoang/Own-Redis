@@ -651,17 +651,43 @@ pub async fn handle_blpop(
     storage: Arc<Mutex<Store>>,
 ) -> Result<Value> {
     let key = unwrap_value_to_string(command_content.get(0).unwrap()).unwrap();
-    loop {
+    let timeout = unwrap_value_to_string(command_content.get(1).unwrap()).unwrap().parse::<f64>().unwrap();
+    if timeout == 0f64{
+        loop {
+            let mut storage = storage.lock().await;
+            let response = storage.pop_front_list(&key, 1);
+            drop(storage);
+            match response {
+                Ok(value) => {
+                    if let Some(value) = value {
+                        if value.len() == 0 {
+                            sleep(Duration::from_millis(500)).await;
+                        } else {
+
+                            // return Ok(Value::Array(value.iter().map(|v|Value::BulkString(v.to_owned())).collect()));
+                            return Ok(Value::Array(vec![
+                                Value::BulkString(key),
+                                Value::BulkString(value[0].to_owned())
+                            ]));
+                        }
+                    } else {
+                        sleep(Duration::from_millis(500)).await;
+                    }
+                }
+                Err(e) => return Err(anyhow::anyhow!("Got error when handle lpop {}", e)),
+            }
+        }
+    }
+    else{
+        sleep(Duration::from_millis((timeout * 1000f64) as u64)).await;
         let mut storage = storage.lock().await;
         let response = storage.pop_front_list(&key, 1);
-        drop(storage);
         match response {
             Ok(value) => {
                 if let Some(value) = value {
                     if value.len() == 0 {
-                        sleep(Duration::from_millis(500)).await;
+                        Ok(Value::NullBulkString)
                     } else {
-                        
                         // return Ok(Value::Array(value.iter().map(|v|Value::BulkString(v.to_owned())).collect()));
                         return Ok(Value::Array(vec![
                             Value::BulkString(key),
@@ -669,7 +695,7 @@ pub async fn handle_blpop(
                         ]));
                     }
                 } else {
-                    sleep(Duration::from_millis(500)).await;
+                    Ok(Value::NullBulkString)
                 }
             }
             Err(e) => return Err(anyhow::anyhow!("Got error when handle lpop {}", e)),
